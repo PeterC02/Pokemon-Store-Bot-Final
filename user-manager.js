@@ -119,9 +119,10 @@ class UserManager {
         address: user.shipping?.address || "",
         address2: user.shipping?.address2 || "",
         city: user.shipping?.city || "",
-        state: user.shipping?.state || "",
+        county: user.shipping?.county || "",
+        state: user.shipping?.county || user.shipping?.state || "",
         zip: user.shipping?.zip || "",
-        country: user.shipping?.country || "US",
+        country: user.shipping?.country || "GB",
         phone: user.shipping?.phone || "",
       },
       paymentDetails: {

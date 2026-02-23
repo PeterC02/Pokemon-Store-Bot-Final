@@ -1,5 +1,6 @@
 const EventEmitter = require("events");
 const { FastCheckout } = require("./fast-checkout");
+const { AddressJigger } = require("./address-jigger");
 
 /**
  * FleetRunner — Runs 1-50 isolated checkout bots concurrently.
@@ -270,12 +271,18 @@ class FleetRunner extends EventEmitter {
       // Build config from user's details
       const userConfig = toCheckoutConfig(bot.user);
 
+      // Apply address jigging — each bot gets a unique address variant
+      const jiggedDetails = AddressJigger.jig(userConfig.checkoutDetails, taskIndex);
+      if (taskIndex > 0) {
+        this.log(`Bot ${botId} (${bot.user.name}): address jigged — "${jiggedDetails.address}" / "${jiggedDetails.zip}"`, "info");
+      }
+
       const config = {
         storeUrl: target.storeUrl || "",
         productUrl: target.productUrl || "",
         itemName: target.itemName || "",
         variantId: target.variantId || "",
-        checkoutDetails: userConfig.checkoutDetails,
+        checkoutDetails: jiggedDetails,
         paymentDetails: userConfig.paymentDetails,
         dryRun,
         confirmationEmail: confirmationEmail || bot.user.shipping?.email || "",

@@ -226,25 +226,28 @@
       <div class="card" style="border-color:var(--accent);background:rgba(108,92,231,0.04)">
         <div class="card-title" id="fleetFormTitle">Add New User</div>
         <input type="hidden" id="fleetEditId" value="" />
+        <div class="fg"><label>User Name / Label</label><input type="text" id="fuName" placeholder="e.g. John S. (Visa)" /></div>
         <div class="row-2">
-          <div class="fg"><label>User Name / Label</label><input type="text" id="fuName" placeholder="e.g. John D. (Visa)" /></div>
-          <div class="fg"><label>Email</label><input type="email" id="fuEmail" placeholder="john@email.com" /></div>
+          <div class="fg"><label>* First Name</label><input type="text" id="fuFirstName" placeholder="John" /></div>
+          <div class="fg"><label>* Last Name</label><input type="text" id="fuLastName" placeholder="Smith" /></div>
+        </div>
+        <div class="fg"><label>* Street Address</label><input type="text" id="fuAddress" placeholder="12 High Street" /></div>
+        <div class="fg"><label>Street Address Line 2</label><input type="text" id="fuAddress2" placeholder="Flat 4B (optional)" /></div>
+        <div class="row-2">
+          <div class="fg"><label>* Postal Code</label><input type="text" id="fuZip" placeholder="SW1A 1AA" /></div>
+          <div class="fg"><label>County</label><input type="text" id="fuCounty" placeholder="Greater London (optional)" /></div>
         </div>
         <div class="row-2">
-          <div class="fg"><label>First Name</label><input type="text" id="fuFirstName" placeholder="John" /></div>
-          <div class="fg"><label>Last Name</label><input type="text" id="fuLastName" placeholder="Doe" /></div>
+          <div class="fg"><label>* Town/City</label><input type="text" id="fuCity" placeholder="London" /></div>
+          <div class="fg"><label>* Country/Region</label><input type="text" id="fuCountry" placeholder="United Kingdom" value="United Kingdom" /></div>
         </div>
-        <div class="fg"><label>Address</label><input type="text" id="fuAddress" placeholder="123 Main St" /></div>
         <div class="row-2">
-          <div class="fg"><label>Address Line 2</label><input type="text" id="fuAddress2" placeholder="Apt 4B (optional)" /></div>
-          <div class="fg"><label>City</label><input type="text" id="fuCity" placeholder="New York" /></div>
+          <div class="fg"><label>* Phone Number</label><input type="tel" id="fuPhone" placeholder="07911 123456" /></div>
+          <div class="fg"><label>* Email</label><input type="email" id="fuEmail" placeholder="john@email.com" /></div>
         </div>
-        <div class="row-3">
-          <div class="fg"><label>State</label><input type="text" id="fuState" placeholder="NY" /></div>
-          <div class="fg"><label>ZIP</label><input type="text" id="fuZip" placeholder="10001" /></div>
-          <div class="fg"><label>Country</label><input type="text" id="fuCountry" placeholder="US" value="US" /></div>
+        <div style="display:flex;align-items:center;gap:8px;margin:6px 0 0;font-size:0.78rem;color:var(--success)">
+          <input type="checkbox" checked disabled style="accent-color:var(--success)" /> <strong>Use as billing address</strong> <span style="color:var(--text-dim)">(always enabled)</span>
         </div>
-        <div class="fg"><label>Phone</label><input type="tel" id="fuPhone" placeholder="555-123-4567" /></div>
         <hr class="divider">
         <div class="row-2">
           <div class="fg"><label>Card Number</label><input type="text" id="fuCardNumber" placeholder="4111 1111 1111 1111" /></div>
@@ -1138,8 +1141,8 @@
   function fleetDeselectAll() { fleetSelectedIds.clear(); fleetRenderTable(); }
 
   function fleetClearForm() {
-    ['fuName','fuEmail','fuFirstName','fuLastName','fuAddress','fuAddress2','fuCity','fuState','fuZip','fuPhone','fuCardNumber','fuCardName','fuExpMonth','fuExpYear','fuCvv'].forEach(id => $(id).value = '');
-    $('fuCountry').value = 'US';
+    ['fuName','fuEmail','fuFirstName','fuLastName','fuAddress','fuAddress2','fuCity','fuCounty','fuZip','fuPhone','fuCardNumber','fuCardName','fuExpMonth','fuExpYear','fuCvv'].forEach(id => $(id).value = '');
+    $('fuCountry').value = 'United Kingdom';
     $('fleetEditId').value = '';
     $('fleetFormTitle').textContent = 'Add New User';
     $('fleetSaveBtn').textContent = 'Add User';
@@ -1152,7 +1155,7 @@
       shipping: {
         email: getVal('fuEmail'), firstName: getVal('fuFirstName'), lastName: getVal('fuLastName'),
         address: getVal('fuAddress'), address2: getVal('fuAddress2'), city: getVal('fuCity'),
-        state: getVal('fuState'), zip: getVal('fuZip'), country: getVal('fuCountry') || 'US', phone: getVal('fuPhone'),
+        county: getVal('fuCounty'), zip: getVal('fuZip'), country: getVal('fuCountry') || 'United Kingdom', phone: getVal('fuPhone'),
       },
       payment: {
         cardNumber: getVal('fuCardNumber'), cardName: getVal('fuCardName'),
@@ -1187,9 +1190,9 @@
     $('fuAddress').value = u.shipping?.address || '';
     $('fuAddress2').value = u.shipping?.address2 || '';
     $('fuCity').value = u.shipping?.city || '';
-    $('fuState').value = u.shipping?.state || '';
+    $('fuCounty').value = u.shipping?.county || '';
     $('fuZip').value = u.shipping?.zip || '';
-    $('fuCountry').value = u.shipping?.country || 'US';
+    $('fuCountry').value = u.shipping?.country || 'United Kingdom';
     $('fuPhone').value = u.shipping?.phone || '';
     $('fuCardNumber').value = u.payment?.cardNumber || '';
     $('fuCardName').value = u.payment?.cardName || '';

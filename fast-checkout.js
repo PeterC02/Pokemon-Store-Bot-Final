@@ -733,9 +733,9 @@ class FastCheckout extends EventEmitter {
     formData.append("checkout[shipping_address][address1]", details.address || "");
     formData.append("checkout[shipping_address][address2]", details.address2 || "");
     formData.append("checkout[shipping_address][city]", details.city || "");
-    formData.append("checkout[shipping_address][province]", details.state || "");
+    formData.append("checkout[shipping_address][province]", details.county || details.state || "");
     formData.append("checkout[shipping_address][zip]", details.zip || "");
-    formData.append("checkout[shipping_address][country]", details.country || "US");
+    formData.append("checkout[shipping_address][country]", details.country || "GB");
     formData.append("checkout[shipping_address][phone]", details.phone || "");
 
     const res = await this.request(checkoutUrl, {
