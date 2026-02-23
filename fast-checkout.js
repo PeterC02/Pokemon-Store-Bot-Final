@@ -248,13 +248,21 @@ class FastCheckout extends EventEmitter {
   extractAuthToken(html) {
     const patterns = [
       /name="authenticity_token"[^>]*value="([^"]+)"/,
+      /value="([^"]+)"[^>]*name="authenticity_token"/,
       /authenticity_token.*?value="([^"]+)"/,
-      /"authenticity_token":"([^"]+)"/,
-      /csrf-token['"]\s*content=['"](.*?)['"]/,
+      /"authenticity_token"\s*:\s*"([^"]+)"/,
+      /csrf-token['"]\s*content=['"]([^'"]*)['"]/ ,
+      /name="csrf-token"[^>]*content="([^"]+)"/,
+      /content="([^"]+)"[^>]*name="csrf-token"/,
+      /<meta[^>]*csrf-token[^>]*content="([^"]+)"/,
+      /data-authenticity-token="([^"]+)"/,
+      /Shopify\.Checkout\.token\s*=\s*['"]([^'"]+)['"]/,
+      /"authToken"\s*:\s*"([^"]+)"/,
+      /authenticity_token=([^&"'\s]+)/,
     ];
     for (const p of patterns) {
       const m = html.match(p);
-      if (m) return m[1];
+      if (m && m[1] && m[1].length > 10) return m[1];
     }
     return null;
   }
@@ -741,11 +749,21 @@ class FastCheckout extends EventEmitter {
 
     if (location || res.ok || res.status === 302) {
       this.log("Shipping address submitted.", "success");
-      // Re-extract auth token from shipping page
-      if (res.status < 300) {
-        const body = await res.text();
-        const newAuth = this.extractAuthToken(body);
-        if (newAuth) this.authToken = newAuth;
+      // Always follow the redirect and re-extract auth token + gateway from the new page
+      // Shopify rotates the authenticity_token on every page transition
+      try {
+        const followUrl = (location && res.status >= 300) ? nextUrl : checkoutUrl;
+        const followRes = await this.request(followUrl);
+        const followBody = await followRes.text();
+        const newAuth = this.extractAuthToken(followBody);
+        if (newAuth) {
+          this.authToken = newAuth;
+          this.log(`Auth token refreshed after shipping: ${newAuth.substring(0, 16)}...`, "success");
+        }
+        const gw = this.extractPaymentGateway(followBody);
+        if (gw) this.paymentGatewayId = gw;
+      } catch (e) {
+        this.log(`Warning: could not refresh auth token after shipping: ${e.message}`, "info");
       }
       return nextUrl;
     }
@@ -819,13 +837,21 @@ class FastCheckout extends EventEmitter {
       const location = submitRes.headers.get("location");
       const nextUrl = location ? (location.startsWith("http") ? location : new URL(location, checkoutUrl).href) : checkoutUrl;
 
-      // Re-extract auth token from payment page
-      if (submitRes.status < 300) {
-        const payBody = await submitRes.text();
+      // Always load the payment page and re-extract auth token + gateway
+      // Shopify rotates authenticity_token on every step transition
+      try {
+        const payPageUrl = (location && submitRes.status >= 300) ? nextUrl : checkoutUrl;
+        const payPageRes = await this.request(payPageUrl);
+        const payBody = await payPageRes.text();
         const payAuth = this.extractAuthToken(payBody);
-        if (payAuth) this.authToken = payAuth;
+        if (payAuth) {
+          this.authToken = payAuth;
+          this.log(`Auth token refreshed after shipping rate: ${payAuth.substring(0, 16)}...`, "success");
+        }
         const gw = this.extractPaymentGateway(payBody);
         if (gw) this.paymentGatewayId = gw;
+      } catch (e) {
+        this.log(`Warning: could not refresh auth token after shipping rate: ${e.message}`, "info");
       }
 
       this.log("Shipping rate selected.", "success");
@@ -858,22 +884,54 @@ class FastCheckout extends EventEmitter {
       sessionToken = null;
     }
 
-    // Step 2: Load payment page if we need gateway ID
-    if (!this.paymentGatewayId) {
+    // Step 2: ALWAYS load the payment page to get a fresh auth token + gateway
+    // Shopify rotates authenticity_token on every page load — stale tokens cause "no authentication token" errors
+    try {
       const payUrl = checkoutUrl.includes("?")
         ? `${checkoutUrl}&step=payment_method`
         : `${checkoutUrl}?step=payment_method`;
       const payRes = await this.request(payUrl);
       const payBody = await payRes.text();
-      this.paymentGatewayId = this.extractPaymentGateway(payBody);
-      const newAuth = this.extractAuthToken(payBody);
-      if (newAuth) this.authToken = newAuth;
+      const freshGw = this.extractPaymentGateway(payBody);
+      if (freshGw) this.paymentGatewayId = freshGw;
+      const freshAuth = this.extractAuthToken(payBody);
+      if (freshAuth) {
+        this.authToken = freshAuth;
+        this.log(`Auth token refreshed for payment: ${freshAuth.substring(0, 16)}...`, "success");
+      } else {
+        this.log("Warning: could not extract fresh auth token from payment page.", "error");
+      }
+    } catch (e) {
+      this.log(`Warning: payment page load failed: ${e.message}`, "error");
+    }
+
+    // Step 2b: If auth token is STILL missing, retry by loading the checkout URL directly
+    if (!this.authToken) {
+      this.log("Auth token missing — retrying from checkout URL...", "error");
+      try {
+        const retryRes = await this.request(checkoutUrl);
+        const retryBody = await retryRes.text();
+        const retryAuth = this.extractAuthToken(retryBody);
+        if (retryAuth) {
+          this.authToken = retryAuth;
+          this.log(`Auth token recovered: ${retryAuth.substring(0, 16)}...`, "success");
+        }
+        if (!this.paymentGatewayId) {
+          const retryGw = this.extractPaymentGateway(retryBody);
+          if (retryGw) this.paymentGatewayId = retryGw;
+        }
+      } catch (_) {}
+    }
+
+    if (!this.authToken) {
+      this.log("FATAL: No authentication token available for payment submission.", "error");
+      return false;
     }
 
     // Step 3: Build payment form
     const formData = new URLSearchParams();
     formData.append("_method", "patch");
-    if (this.authToken) formData.append("authenticity_token", this.authToken);
+    formData.append("authenticity_token", this.authToken);
     formData.append("previous_step", "payment_method");
     formData.append("step", "");
 
@@ -1224,9 +1282,25 @@ class FastCheckout extends EventEmitter {
       this.authToken = this.extractAuthToken(pageBody);
       this.paymentGatewayId = this.extractPaymentGateway(pageBody);
 
+      // If auth token not found on first load, try payment step URL
+      if (!this.authToken) {
+        try {
+          const payStepUrl = checkoutUrl.includes("?") ? `${checkoutUrl}&step=payment_method` : `${checkoutUrl}?step=payment_method`;
+          const payStepRes = await this.request(payStepUrl);
+          const payStepBody = await payStepRes.text();
+          this.authToken = this.extractAuthToken(payStepBody) || this.authToken;
+          if (!this.paymentGatewayId) this.paymentGatewayId = this.extractPaymentGateway(payStepBody);
+        } catch (_) {}
+      }
+
+      if (!this.authToken) {
+        this.log("GraphQL payment: no auth token available.", "error");
+        return null;
+      }
+
       const formData = new URLSearchParams();
       formData.append("_method", "patch");
-      if (this.authToken) formData.append("authenticity_token", this.authToken);
+      formData.append("authenticity_token", this.authToken);
       formData.append("previous_step", "payment_method");
       formData.append("step", "");
       formData.append("s", sessionToken);

@@ -780,33 +780,77 @@ class CartBot extends EventEmitter {
   }
 
   async fillPaymentIframes(payment) {
-    const iframeSelectors = [
-      'iframe[name*="card"]', 'iframe[src*="stripe"]', 'iframe[src*="braintree"]',
-      'iframe[title*="card"]', 'iframe[id*="card"]', 'iframe[class*="card"]',
-    ];
-    for (const sel of iframeSelectors) {
-      const frameHandle = await this.page.$(sel);
-      if (frameHandle) {
-        this.log(`Found payment iframe: ${sel}`);
-        try {
-          const frame = await frameHandle.contentFrame();
-          if (frame) {
-            if (payment.cardNumber) {
-              const numInput = await frame.$("input");
-              if (numInput) {
-                await numInput.click();
-                await numInput.type(payment.cardNumber, { delay: 30 });
-                this.log("Typed card number into iframe", "success");
+    // Detect all payment-related iframes on the page
+    const allIframes = await this.page.$$('iframe');
+    if (allIframes.length === 0) return false;
+
+    // Map iframe purposes by their attributes
+    const iframeMap = {
+      number: { selectors: ['iframe[name*="number"]', 'iframe[name*="card-number"]', 'iframe[title*="card number"]', 'iframe[id*="number"]', 'iframe[name*="card"]', 'iframe[src*="stripe"]', 'iframe[src*="braintree"]', 'iframe[title*="card"]', 'iframe[id*="card"]', 'iframe[class*="card"]'], value: payment.cardNumber },
+      name: { selectors: ['iframe[name*="name"]', 'iframe[title*="name"]', 'iframe[id*="name"]'], value: payment.cardName },
+      expiry: { selectors: ['iframe[name*="expiry"]', 'iframe[name*="exp"]', 'iframe[title*="expir"]', 'iframe[id*="expiry"]', 'iframe[id*="exp"]'], value: payment.expiryMonth && payment.expiryYear ? `${payment.expiryMonth} / ${payment.expiryYear.toString().slice(-2)}` : '' },
+      cvv: { selectors: ['iframe[name*="cvv"]', 'iframe[name*="cvc"]', 'iframe[name*="verification"]', 'iframe[name*="security"]', 'iframe[title*="cvv"]', 'iframe[title*="cvc"]', 'iframe[title*="security"]', 'iframe[id*="cvv"]', 'iframe[id*="cvc"]'], value: payment.cvv },
+    };
+
+    let filledAny = false;
+
+    for (const [fieldName, config] of Object.entries(iframeMap)) {
+      if (!config.value) continue;
+      for (const sel of config.selectors) {
+        const frameHandle = await this.page.$(sel);
+        if (frameHandle) {
+          try {
+            const frame = await frameHandle.contentFrame();
+            if (frame) {
+              const input = await frame.$('input');
+              if (input) {
+                await input.click();
+                await input.type(config.value, { delay: 30 });
+                this.log(`Filled ${fieldName} in iframe`, "success");
+                filledAny = true;
+                break;
               }
             }
-            return true;
+          } catch (err) {
+            this.log(`Iframe ${fieldName} error: ${err.message}`, "error");
           }
-        } catch (err) {
-          this.log(`Iframe access error: ${err.message}`, "error");
         }
       }
     }
-    return false;
+
+    // Fallback: if we only found a single generic card iframe, try filling all inputs sequentially
+    if (!filledAny) {
+      const genericSelectors = [
+        'iframe[name*="card"]', 'iframe[src*="stripe"]', 'iframe[src*="braintree"]',
+        'iframe[title*="card"]', 'iframe[id*="card"]', 'iframe[class*="card"]',
+      ];
+      for (const sel of genericSelectors) {
+        const frameHandle = await this.page.$(sel);
+        if (frameHandle) {
+          this.log(`Found generic payment iframe: ${sel}`);
+          try {
+            const frame = await frameHandle.contentFrame();
+            if (frame) {
+              const inputs = await frame.$$('input');
+              const values = [payment.cardNumber, payment.expiryMonth && payment.expiryYear ? `${payment.expiryMonth}${payment.expiryYear.toString().slice(-2)}` : '', payment.cvv].filter(Boolean);
+              for (let i = 0; i < Math.min(inputs.length, values.length); i++) {
+                await inputs[i].click();
+                await inputs[i].type(values[i], { delay: 30 });
+              }
+              if (inputs.length > 0) {
+                this.log(`Filled ${Math.min(inputs.length, values.length)} field(s) in generic iframe`, "success");
+                filledAny = true;
+              }
+              break;
+            }
+          } catch (err) {
+            this.log(`Generic iframe error: ${err.message}`, "error");
+          }
+        }
+      }
+    }
+
+    return filledAny;
   }
 
   async submitOrder(dryRun = true, selectorOverride) {
