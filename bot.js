@@ -39,11 +39,15 @@ class BrowserPool {
       "--no-default-browser-check",
     ];
     if (proxyArg) args.push(`--proxy-server=${proxyArg}`);
-    return puppeteer.launch({
+    const launchOpts = {
       headless: headless ? "new" : false,
       defaultViewport: { width: 1280, height: 900 },
       args,
-    });
+    };
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      launchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    return puppeteer.launch(launchOpts);
   }
 
   async release(browser) {

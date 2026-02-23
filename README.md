@@ -40,3 +40,37 @@ Then open **http://localhost:3000** in your browser.
 
 - **POST /api/run** — Start the bot with `{ url, itemName, headless?, clickItemFirst? }`
 - **POST /api/stop** — Stop the active browser instance
+
+---
+
+## Deployment
+
+> **Note:** This is a long-running Node.js server. It will NOT work on serverless platforms like Vercel or Netlify. Use one of the options below.
+
+### Docker (any VPS)
+
+```bash
+docker build -t pokemon-store-bot .
+docker run -p 3000:3000 pokemon-store-bot
+```
+
+### Railway (recommended — free tier available)
+
+1. Push this repo to GitHub
+2. Go to [railway.app](https://railway.app), create a new project → "Deploy from GitHub repo"
+3. Select this repo — Railway auto-detects the `Dockerfile`
+4. It deploys automatically. Add a public domain under Settings → Networking
+
+### Render
+
+1. Push this repo to GitHub
+2. Go to [render.com](https://render.com), New → Web Service → connect this repo
+3. Render auto-detects the `render.yaml` and `Dockerfile`
+4. Deploy — you'll get a `.onrender.com` URL
+
+### Fly.io
+
+```bash
+fly launch --dockerfile Dockerfile
+fly deploy
+```
