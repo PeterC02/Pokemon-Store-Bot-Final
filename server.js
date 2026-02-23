@@ -9,12 +9,16 @@ const { CaptchaHarvester } = require("./captcha-harvester");
 const { PokemonCenterModule } = require("./site-modules/pokemon-center");
 const { SmartProxyManager } = require("./http-engine");
 const { SelfTest } = require("./self-test");
+const { UserManager } = require("./user-manager");
+const { FleetRunner } = require("./fleet-runner");
 
 let activeMonitor = null;
 let activeTaskRunner = null;
 let activeHarvester = null;
+let activeFleet = null;
 let sessionKeeper = null; // Always-on session refresh loop
 const profileManager = new ProfileManager();
+const userManager = new UserManager();
 
 const app = express();
 const PORT = 3000;
@@ -756,6 +760,125 @@ app.get("/api/timing", (req, res) => {
     }
   }
   res.json({ timings, timestamp: new Date().toISOString() });
+});
+
+// ─── Fleet Users CRUD ───
+app.get("/api/users", (req, res) => {
+  res.json(userManager.getAll());
+});
+
+app.post("/api/users", (req, res) => {
+  try {
+    const user = userManager.add(req.body);
+    res.json(user);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/users/bulk", (req, res) => {
+  try {
+    const added = userManager.addBulk(req.body.users || []);
+    res.json({ added: added.length, users: added });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put("/api/users/:id", (req, res) => {
+  try {
+    const user = userManager.update(req.params.id, req.body);
+    res.json(user);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+app.delete("/api/users/:id", (req, res) => {
+  try {
+    userManager.remove(req.params.id);
+    res.json({ message: "User deleted." });
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+app.delete("/api/users", (req, res) => {
+  userManager.removeAll();
+  res.json({ message: "All users deleted." });
+});
+
+app.post("/api/users/:id/toggle", (req, res) => {
+  try {
+    const user = userManager.toggleEnabled(req.params.id);
+    res.json(user);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+// ─── Fleet Launch / Stop / Status ───
+app.post("/api/fleet/launch", async (req, res) => {
+  const {
+    userIds, storeUrl, productUrl, itemName, variantId,
+    dryRun, proxyList, confirmationEmail, smtpConfig,
+  } = req.body;
+
+  if (!userIds || userIds.length === 0) {
+    return res.status(400).json({ error: "Select at least one user." });
+  }
+  if (!storeUrl && !productUrl) {
+    return res.status(400).json({ error: "Store URL or Product URL required." });
+  }
+
+  // Stop any existing fleet
+  if (activeFleet && activeFleet.running) {
+    activeFleet.stop();
+  }
+
+  const users = userManager.getByIds(userIds);
+  if (users.length === 0) {
+    return res.status(400).json({ error: "No valid users found for the given IDs." });
+  }
+
+  activeFleet = new FleetRunner();
+  activeFleet.on("log", (entry) => broadcastLog(entry));
+  activeFleet.on("bot-status", (status) => broadcastEvent("bot-status", status));
+  activeFleet.on("fleet-complete", (result) => broadcastEvent("fleet-complete", result));
+  activeFleet.on("fleet-stopped", () => broadcastEvent("fleet-stopped", {}));
+
+  const proxies = (proxyList || []).filter(Boolean);
+
+  res.json({ started: true, runId: activeFleet.runId, botCount: users.length });
+
+  try {
+    await activeFleet.launch({
+      users,
+      target: { storeUrl, productUrl, itemName, variantId },
+      dryRun: dryRun ?? true,
+      proxyList: proxies,
+      captchaHarvester: activeHarvester || null,
+      confirmationEmail: confirmationEmail || "",
+      smtpConfig: smtpConfig || null,
+      toCheckoutConfig: (user) => userManager.toCheckoutConfig(user),
+    });
+  } catch (err) {
+    broadcastEvent("fleet-complete", { success: false, error: err.message });
+  }
+});
+
+app.post("/api/fleet/stop", (req, res) => {
+  if (activeFleet && activeFleet.running) {
+    activeFleet.stop();
+    res.json({ stopped: true });
+  } else {
+    res.json({ message: "No active fleet." });
+  }
+});
+
+app.get("/api/fleet/status", (req, res) => {
+  if (!activeFleet) return res.json({ running: false, totalBots: 0, statuses: [] });
+  res.json(activeFleet.getStatus());
 });
 
 // ─── Warm up browser pool on startup ───

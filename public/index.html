@@ -144,6 +144,7 @@
   <!-- ═══ SIDEBAR ═══ -->
   <div class="sidebar">
     <div class="nav-item active" onclick="showPanel('quickstart')" id="nav-quickstart" style="background:var(--accent-glow);border:1px solid rgba(108,92,231,0.3);margin-bottom:8px"><span class="nav-icon">&#128640;</span> <strong>Quick Start</strong></div>
+    <div class="nav-item" onclick="showPanel('fleet')" id="nav-fleet" style="border:1px solid rgba(231,76,60,0.3);margin-bottom:8px"><span class="nav-icon">&#9889;</span> <strong>Fleet Mode</strong> <span class="tag tag-red" style="margin-left:auto;font-size:0.6rem">50 BOTS</span></div>
     <div class="nav-section">Step-by-Step Setup</div>
     <div class="nav-item" onclick="showPanel('target')" id="nav-target"><span class="nav-icon" style="opacity:0.5">1.</span> Target Store</div>
     <div class="nav-item" onclick="showPanel('checkout')" id="nav-checkout"><span class="nav-icon" style="opacity:0.5">2.</span> Shipping Info</div>
@@ -214,6 +215,98 @@
       </div>
 
       <button class="btn btn-primary btn-lg btn-block" onclick="showPanel('target')" style="margin-top:8px">Start Setup &rarr;</button>
+    </div>
+
+    <!-- ─── FLEET MODE ─── -->
+    <div class="panel" id="panel-fleet">
+      <div class="panel-title">Fleet Mode — Multi-User Concurrent Checkout</div>
+      <div class="panel-desc">Add up to 50 users with their own shipping &amp; payment details. Select which users to run, then launch all bots simultaneously.</div>
+
+      <!-- Add User Form -->
+      <div class="card" style="border-color:var(--accent);background:rgba(108,92,231,0.04)">
+        <div class="card-title" id="fleetFormTitle">Add New User</div>
+        <input type="hidden" id="fleetEditId" value="" />
+        <div class="row-2">
+          <div class="fg"><label>User Name / Label</label><input type="text" id="fuName" placeholder="e.g. John D. (Visa)" /></div>
+          <div class="fg"><label>Email</label><input type="email" id="fuEmail" placeholder="john@email.com" /></div>
+        </div>
+        <div class="row-2">
+          <div class="fg"><label>First Name</label><input type="text" id="fuFirstName" placeholder="John" /></div>
+          <div class="fg"><label>Last Name</label><input type="text" id="fuLastName" placeholder="Doe" /></div>
+        </div>
+        <div class="fg"><label>Address</label><input type="text" id="fuAddress" placeholder="123 Main St" /></div>
+        <div class="row-2">
+          <div class="fg"><label>Address Line 2</label><input type="text" id="fuAddress2" placeholder="Apt 4B (optional)" /></div>
+          <div class="fg"><label>City</label><input type="text" id="fuCity" placeholder="New York" /></div>
+        </div>
+        <div class="row-3">
+          <div class="fg"><label>State</label><input type="text" id="fuState" placeholder="NY" /></div>
+          <div class="fg"><label>ZIP</label><input type="text" id="fuZip" placeholder="10001" /></div>
+          <div class="fg"><label>Country</label><input type="text" id="fuCountry" placeholder="US" value="US" /></div>
+        </div>
+        <div class="fg"><label>Phone</label><input type="tel" id="fuPhone" placeholder="555-123-4567" /></div>
+        <hr class="divider">
+        <div class="row-2">
+          <div class="fg"><label>Card Number</label><input type="text" id="fuCardNumber" placeholder="4111 1111 1111 1111" /></div>
+          <div class="fg"><label>Name on Card</label><input type="text" id="fuCardName" placeholder="John Doe" /></div>
+        </div>
+        <div class="row-3">
+          <div class="fg"><label>Exp Month</label><input type="text" id="fuExpMonth" placeholder="12" /></div>
+          <div class="fg"><label>Exp Year</label><input type="text" id="fuExpYear" placeholder="2028" /></div>
+          <div class="fg"><label>CVV</label><input type="text" id="fuCvv" placeholder="123" /></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="fleetSaveUser()" id="fleetSaveBtn">Add User</button>
+          <button class="btn btn-ghost" onclick="fleetClearForm()" id="fleetCancelBtn" style="display:none">Cancel Edit</button>
+        </div>
+      </div>
+
+      <!-- User Table -->
+      <div class="card">
+        <div class="card-title" style="justify-content:space-between">
+          <span>Users <span id="fleetUserCount" class="badge badge-ok">0 / 50</span></span>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost" onclick="fleetSelectAll()" style="padding:4px 10px;font-size:0.72rem">Select All</button>
+            <button class="btn btn-ghost" onclick="fleetDeselectAll()" style="padding:4px 10px;font-size:0.72rem">Deselect All</button>
+            <button class="btn btn-danger" onclick="fleetDeleteAll()" style="padding:4px 10px;font-size:0.72rem">Delete All</button>
+          </div>
+        </div>
+        <div id="fleetUserTable" style="max-height:340px;overflow-y:auto">
+          <div style="color:var(--text-dim);font-size:0.8rem;padding:20px;text-align:center">No users added yet. Add your first user above.</div>
+        </div>
+      </div>
+
+      <!-- Fleet Target + Launch -->
+      <div class="card" style="border-color:var(--error);background:rgba(231,76,60,0.04)">
+        <div class="card-title">Fleet Launch Controls <span class="badge badge-fast">CONCURRENT</span></div>
+        <div class="row-2">
+          <div class="fg"><label>Store URL</label><input type="url" id="fleetStoreUrl" placeholder="https://store.example.com" /></div>
+          <div class="fg"><label>Product URL (optional)</label><input type="url" id="fleetProductUrl" placeholder="https://store.com/products/item" /></div>
+        </div>
+        <div class="row-2">
+          <div class="fg"><label>Variant ID (fastest)</label><input type="text" id="fleetVariantId" placeholder="e.g. 39256789012" /></div>
+          <div class="fg"><label>Item Name (optional)</label><input type="text" id="fleetItemName" placeholder="Pikachu Plush" /></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin:10px 0">
+          <label class="checkbox-label"><input type="checkbox" id="fleetDryRun" checked /> <strong>Dry Run</strong></label>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-lg btn-block" onclick="fleetLaunch()" id="fleetLaunchBtn" style="background:var(--error)">Launch Fleet</button>
+          <button class="btn btn-danger btn-lg" onclick="fleetStop()" id="fleetStopBtn" disabled>Stop All</button>
+        </div>
+      </div>
+
+      <!-- Live Bot Status Grid -->
+      <div class="card" id="fleetStatusCard" style="display:none">
+        <div class="card-title" style="justify-content:space-between">
+          <span>Live Bot Status <span class="badge badge-fast" id="fleetRunningBadge">RUNNING</span></span>
+          <span style="font-size:0.72rem;color:var(--text-dim)" id="fleetElapsed">0.0s</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap" id="fleetSummaryBar">
+          <span style="font-size:0.78rem;font-weight:600;color:var(--text-muted)">Waiting...</span>
+        </div>
+        <div id="fleetBotGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px"></div>
+      </div>
     </div>
 
     <!-- ─── TARGET & MODE ─── -->
@@ -589,6 +682,9 @@
       if (data.type === 'stock-found') { setStatus('success', `STOCK FOUND: ${data.title||'Available!'}`); return; }
       if (data.type === 'monitor-timeout') { setStatus('error', 'Monitor timed out.'); $('monitorStartBtn').disabled = false; $('monitorStopBtn').disabled = true; return; }
       if (data.type === 'monitor-stopped') { $('monitorStartBtn').disabled = false; $('monitorStopBtn').disabled = true; return; }
+      if (data.type === 'bot-status') { fleetUpdateBotCard(data); return; }
+      if (data.type === 'fleet-complete') { fleetHandleComplete(data); return; }
+      if (data.type === 'fleet-stopped') { fleetStop(); return; }
       appendLog(data);
     };
   }
@@ -942,9 +1038,276 @@
     });
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // FLEET MODE — Multi-user concurrent checkout
+  // ═══════════════════════════════════════════════════════════════
+  let fleetUsers = [];
+  let fleetSelectedIds = new Set();
+  let fleetBotStatuses = {};
+  let fleetElapsedTimer = null;
+
+  async function fleetRefreshUsers() {
+    try {
+      fleetUsers = await (await fetch('/api/users')).json();
+    } catch(_) { fleetUsers = []; }
+    fleetRenderTable();
+  }
+
+  function fleetRenderTable() {
+    const container = $('fleetUserTable');
+    $('fleetUserCount').textContent = `${fleetUsers.length} / 50`;
+    if (fleetUsers.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-dim);font-size:0.8rem;padding:20px;text-align:center">No users added yet. Add your first user above.</div>';
+      return;
+    }
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:0.78rem">';
+    html += '<tr style="border-bottom:1px solid var(--border);color:var(--text-dim);font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px"><th style="padding:6px;text-align:left;width:30px"><input type="checkbox" onchange="fleetToggleAll(this.checked)" /></th><th style="padding:6px;text-align:left">Name</th><th style="padding:6px;text-align:left">Email</th><th style="padding:6px;text-align:left">Card</th><th style="padding:6px;text-align:left">City</th><th style="padding:6px;text-align:right;width:80px">Actions</th></tr>';
+    for (const u of fleetUsers) {
+      const checked = fleetSelectedIds.has(u.id) ? 'checked' : '';
+      const card = u.payment?.cardNumber ? '...' + u.payment.cardNumber.slice(-4) : '-';
+      const rowBg = fleetSelectedIds.has(u.id) ? 'background:rgba(108,92,231,0.06)' : '';
+      html += `<tr style="border-bottom:1px solid var(--border);${rowBg}">`;
+      html += `<td style="padding:6px"><input type="checkbox" ${checked} onchange="fleetToggleUser('${u.id}', this.checked)" /></td>`;
+      html += `<td style="padding:6px;font-weight:600">${u.name || '-'}</td>`;
+      html += `<td style="padding:6px;color:var(--text-muted)">${u.shipping?.email || '-'}</td>`;
+      html += `<td style="padding:6px;color:var(--text-muted)">${card}</td>`;
+      html += `<td style="padding:6px;color:var(--text-muted)">${u.shipping?.city || '-'}</td>`;
+      html += `<td style="padding:6px;text-align:right"><button onclick="fleetEditUser('${u.id}')" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.72rem;padding:2px 6px">Edit</button><button onclick="fleetDeleteUser('${u.id}')" style="background:none;border:none;color:var(--error);cursor:pointer;font-size:0.72rem;padding:2px 6px">Del</button></td>`;
+      html += '</tr>';
+    }
+    html += '</table>';
+    container.innerHTML = html;
+  }
+
+  function fleetToggleUser(id, checked) {
+    if (checked) fleetSelectedIds.add(id); else fleetSelectedIds.delete(id);
+    fleetRenderTable();
+  }
+  function fleetToggleAll(checked) {
+    if (checked) fleetUsers.forEach(u => fleetSelectedIds.add(u.id));
+    else fleetSelectedIds.clear();
+    fleetRenderTable();
+  }
+  function fleetSelectAll() { fleetUsers.forEach(u => fleetSelectedIds.add(u.id)); fleetRenderTable(); }
+  function fleetDeselectAll() { fleetSelectedIds.clear(); fleetRenderTable(); }
+
+  function fleetClearForm() {
+    ['fuName','fuEmail','fuFirstName','fuLastName','fuAddress','fuAddress2','fuCity','fuState','fuZip','fuPhone','fuCardNumber','fuCardName','fuExpMonth','fuExpYear','fuCvv'].forEach(id => $(id).value = '');
+    $('fuCountry').value = 'US';
+    $('fleetEditId').value = '';
+    $('fleetFormTitle').textContent = 'Add New User';
+    $('fleetSaveBtn').textContent = 'Add User';
+    $('fleetCancelBtn').style.display = 'none';
+  }
+
+  function fleetGatherForm() {
+    return {
+      name: getVal('fuName'),
+      shipping: {
+        email: getVal('fuEmail'), firstName: getVal('fuFirstName'), lastName: getVal('fuLastName'),
+        address: getVal('fuAddress'), address2: getVal('fuAddress2'), city: getVal('fuCity'),
+        state: getVal('fuState'), zip: getVal('fuZip'), country: getVal('fuCountry') || 'US', phone: getVal('fuPhone'),
+      },
+      payment: {
+        cardNumber: getVal('fuCardNumber'), cardName: getVal('fuCardName'),
+        expiryMonth: getVal('fuExpMonth'), expiryYear: getVal('fuExpYear'), cvv: getVal('fuCvv'),
+      },
+    };
+  }
+
+  async function fleetSaveUser() {
+    const data = fleetGatherForm();
+    if (!data.name) { alert('User name is required.'); return; }
+    const editId = $('fleetEditId').value;
+    try {
+      if (editId) {
+        await fetch(`/api/users/${editId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+      } else {
+        await fetch('/api/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+      }
+      fleetClearForm();
+      await fleetRefreshUsers();
+    } catch(e) { alert('Error: ' + e.message); }
+  }
+
+  function fleetEditUser(id) {
+    const u = fleetUsers.find(x => x.id === id);
+    if (!u) return;
+    $('fleetEditId').value = u.id;
+    $('fuName').value = u.name || '';
+    $('fuEmail').value = u.shipping?.email || '';
+    $('fuFirstName').value = u.shipping?.firstName || '';
+    $('fuLastName').value = u.shipping?.lastName || '';
+    $('fuAddress').value = u.shipping?.address || '';
+    $('fuAddress2').value = u.shipping?.address2 || '';
+    $('fuCity').value = u.shipping?.city || '';
+    $('fuState').value = u.shipping?.state || '';
+    $('fuZip').value = u.shipping?.zip || '';
+    $('fuCountry').value = u.shipping?.country || 'US';
+    $('fuPhone').value = u.shipping?.phone || '';
+    $('fuCardNumber').value = u.payment?.cardNumber || '';
+    $('fuCardName').value = u.payment?.cardName || '';
+    $('fuExpMonth').value = u.payment?.expiryMonth || '';
+    $('fuExpYear').value = u.payment?.expiryYear || '';
+    $('fuCvv').value = u.payment?.cvv || '';
+    $('fleetFormTitle').textContent = 'Edit User: ' + (u.name || '');
+    $('fleetSaveBtn').textContent = 'Save Changes';
+    $('fleetCancelBtn').style.display = 'inline-flex';
+    $('panel-fleet').scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function fleetDeleteUser(id) {
+    if (!confirm('Delete this user?')) return;
+    try { await fetch(`/api/users/${id}`, { method:'DELETE' }); } catch(_) {}
+    fleetSelectedIds.delete(id);
+    await fleetRefreshUsers();
+  }
+
+  async function fleetDeleteAll() {
+    if (!confirm('Delete ALL users? This cannot be undone.')) return;
+    try { await fetch('/api/users', { method:'DELETE' }); } catch(_) {}
+    fleetSelectedIds.clear();
+    await fleetRefreshUsers();
+  }
+
+  // ─── Fleet Launch ───
+  async function fleetLaunch() {
+    const selected = Array.from(fleetSelectedIds);
+    if (selected.length === 0) { alert('Select at least one user to launch.'); return; }
+    const storeUrl = getVal('fleetStoreUrl');
+    const productUrl = getVal('fleetProductUrl');
+    if (!storeUrl && !productUrl) { alert('Enter a Store URL or Product URL.'); return; }
+
+    connectSSE();
+    $('logPanel').innerHTML = ''; logEntryCount = 0;
+    $('fleetLaunchBtn').disabled = true;
+    $('fleetStopBtn').disabled = false;
+    $('fleetStatusCard').style.display = 'block';
+    $('fleetRunningBadge').textContent = 'RUNNING';
+    $('fleetRunningBadge').className = 'badge badge-fast';
+    fleetBotStatuses = {};
+    $('fleetBotGrid').innerHTML = '';
+    setStatus('running', `Fleet: launching ${selected.length} bot(s)...`);
+
+    // Start elapsed timer
+    const fleetStart = Date.now();
+    if (fleetElapsedTimer) clearInterval(fleetElapsedTimer);
+    fleetElapsedTimer = setInterval(() => {
+      $('fleetElapsed').textContent = ((Date.now() - fleetStart) / 1000).toFixed(1) + 's';
+    }, 200);
+
+    try {
+      await fetch('/api/fleet/launch', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          userIds: selected,
+          storeUrl, productUrl,
+          itemName: getVal('fleetItemName'),
+          variantId: getVal('fleetVariantId'),
+          dryRun: $('fleetDryRun').checked,
+          proxyList: gatherProxies(),
+        }),
+      });
+    } catch(e) {
+      setStatus('error', e.message);
+      $('fleetLaunchBtn').disabled = false;
+      $('fleetStopBtn').disabled = true;
+      if (fleetElapsedTimer) clearInterval(fleetElapsedTimer);
+    }
+  }
+
+  async function fleetStop() {
+    try { await fetch('/api/fleet/stop', { method:'POST' }); } catch(_) {}
+    $('fleetLaunchBtn').disabled = false;
+    $('fleetStopBtn').disabled = true;
+    if (fleetElapsedTimer) clearInterval(fleetElapsedTimer);
+    $('fleetRunningBadge').textContent = 'STOPPED';
+    $('fleetRunningBadge').className = 'badge badge-warn';
+    setStatus('error', 'Fleet stopped.');
+  }
+
+  // ─── Fleet Bot Status Rendering ───
+  const STATE_COLORS = {
+    queued: { bg: 'var(--surface-2)', border: 'var(--border)', text: 'var(--text-dim)', icon: '&#9203;' },
+    starting: { bg: 'rgba(52,152,219,0.08)', border: 'rgba(52,152,219,0.3)', text: 'var(--info)', icon: '&#9889;' },
+    resolving: { bg: 'rgba(52,152,219,0.08)', border: 'rgba(52,152,219,0.3)', text: 'var(--info)', icon: '&#128269;' },
+    adding: { bg: 'rgba(108,92,231,0.08)', border: 'rgba(108,92,231,0.3)', text: 'var(--accent)', icon: '&#128722;' },
+    checkout: { bg: 'rgba(108,92,231,0.08)', border: 'rgba(108,92,231,0.3)', text: 'var(--accent)', icon: '&#128179;' },
+    shipping: { bg: 'rgba(243,156,18,0.08)', border: 'rgba(243,156,18,0.3)', text: 'var(--warning)', icon: '&#128230;' },
+    rate: { bg: 'rgba(243,156,18,0.08)', border: 'rgba(243,156,18,0.3)', text: 'var(--warning)', icon: '&#128666;' },
+    payment: { bg: 'rgba(231,76,60,0.08)', border: 'rgba(231,76,60,0.3)', text: 'var(--error)', icon: '&#128179;' },
+    processing: { bg: 'rgba(231,76,60,0.08)', border: 'rgba(231,76,60,0.3)', text: 'var(--error)', icon: '&#8987;' },
+    success: { bg: 'rgba(0,184,148,0.1)', border: 'rgba(0,184,148,0.4)', text: 'var(--success)', icon: '&#10004;' },
+    failed: { bg: 'rgba(231,76,60,0.08)', border: 'rgba(231,76,60,0.3)', text: 'var(--error)', icon: '&#10008;' },
+    stopped: { bg: 'var(--surface-2)', border: 'var(--border)', text: 'var(--text-dim)', icon: '&#9632;' },
+  };
+
+  function fleetUpdateBotCard(status) {
+    fleetBotStatuses[status.botId] = status;
+    const grid = $('fleetBotGrid');
+    let card = document.getElementById('fbot-' + status.botId);
+    const sc = STATE_COLORS[status.state] || STATE_COLORS.queued;
+
+    if (!card) {
+      card = document.createElement('div');
+      card.id = 'fbot-' + status.botId;
+      grid.appendChild(card);
+    }
+
+    const stateLabel = status.state.charAt(0).toUpperCase() + status.state.slice(1);
+    card.style.cssText = `padding:12px;border-radius:10px;border:2px solid ${sc.border};background:${sc.bg};transition:all 0.2s`;
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        <span style="font-size:1.1rem">${sc.icon}</span>
+        <span style="font-weight:700;font-size:0.82rem;color:${sc.text};flex:1">${status.userName}</span>
+        <span style="font-size:0.68rem;color:var(--text-dim)">${status.elapsed}s</span>
+      </div>
+      <div style="font-size:0.72rem;font-weight:600;color:${sc.text};margin-bottom:2px">${stateLabel}</div>
+      <div style="font-size:0.65rem;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px" title="${status.detail || ''}">${status.detail || ''}</div>
+    `;
+
+    // Update summary bar
+    fleetUpdateSummary();
+  }
+
+  function fleetUpdateSummary() {
+    const counts = {};
+    for (const s of Object.values(fleetBotStatuses)) {
+      counts[s.state] = (counts[s.state] || 0) + 1;
+    }
+    const total = Object.values(fleetBotStatuses).length;
+    let html = '';
+    for (const [state, count] of Object.entries(counts)) {
+      const sc = STATE_COLORS[state] || STATE_COLORS.queued;
+      html += `<span style="padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:600;background:${sc.bg};color:${sc.text};border:1px solid ${sc.border}">${state}: ${count}</span>`;
+    }
+    html += `<span style="font-size:0.7rem;color:var(--text-dim);margin-left:auto">${total} bot(s)</span>`;
+    $('fleetSummaryBar').innerHTML = html;
+  }
+
+  function fleetHandleComplete(data) {
+    if (fleetElapsedTimer) clearInterval(fleetElapsedTimer);
+    $('fleetLaunchBtn').disabled = false;
+    $('fleetStopBtn').disabled = true;
+
+    if (data.success || data.successCount > 0) {
+      $('fleetRunningBadge').textContent = 'COMPLETE';
+      $('fleetRunningBadge').className = 'badge badge-ok';
+      const msg = data.dryRun
+        ? `Fleet DRY RUN: ${data.successCount}/${data.total} succeeded (${data.elapsed}s)`
+        : `Fleet: ${data.successCount}/${data.total} orders placed! (${data.elapsed}s)`;
+      setStatus('success', msg);
+    } else {
+      $('fleetRunningBadge').textContent = 'FAILED';
+      $('fleetRunningBadge').className = 'badge badge-fast';
+      setStatus('error', `Fleet: all ${data.total} bots failed (${data.elapsed}s)`);
+    }
+  }
+
   // ─── Init ───
   $('useCustomSmtp').addEventListener('change', function() { $('smtpFields').style.display = this.checked ? 'block' : 'none'; });
   refreshProfiles();
+  fleetRefreshUsers();
 </script>
 </body>
 </html>
