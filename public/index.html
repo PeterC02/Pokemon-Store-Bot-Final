@@ -287,6 +287,18 @@
           <div class="fg"><label>Variant ID (fastest)</label><input type="text" id="fleetVariantId" placeholder="e.g. 39256789012" /></div>
           <div class="fg"><label>Item Name (optional)</label><input type="text" id="fleetItemName" placeholder="Pikachu Plush" /></div>
         </div>
+        <hr class="divider">
+        <div class="card-title">Proxies — 1 Unique IP Per Bot <span class="badge badge-warn">REQUIRED</span></div>
+        <div class="panel-desc" style="margin-bottom:10px;font-size:0.75rem">Each bot gets its own proxy so every user checks out from a different IP. Paste one proxy per line. You need <strong>at least as many proxies as selected users</strong>.</div>
+        <div class="fg">
+          <label>Proxy List (one per line)</label>
+          <textarea id="fleetProxyList" rows="4" placeholder="ip:port&#10;ip:port:user:pass&#10;http://user:pass@ip:port&#10;socks5://ip:port" style="font-family:monospace;font-size:0.78rem;resize:vertical"></textarea>
+          <div class="hint" id="fleetProxyCount">0 proxies loaded</div>
+        </div>
+        <div class="info-box" style="margin-bottom:14px">
+          <strong>Recommended for lowest latency:</strong><br>
+          Use <strong>residential rotating proxies</strong> with sticky sessions from providers like <strong>Bright Data</strong>, <strong>IPRoyal</strong>, or <strong>Smartproxy</strong>. Use the <code>ip:port:user:pass</code> format. Each bot will get a unique sticky session = unique IP. Datacenter proxies work too but are more likely to be flagged.
+        </div>
         <div style="display:flex;align-items:center;gap:12px;margin:10px 0">
           <label class="checkbox-label"><input type="checkbox" id="fleetDryRun" checked /> <strong>Dry Run</strong></label>
         </div>
@@ -1202,6 +1214,17 @@
     await fleetRefreshUsers();
   }
 
+  // ─── Fleet Proxy Helpers ───
+  function getFleetProxies() {
+    const raw = $('fleetProxyList').value.trim();
+    if (!raw) return [];
+    return raw.split('\n').map(l => l.trim()).filter(Boolean);
+  }
+  $('fleetProxyList').addEventListener('input', function() {
+    const count = getFleetProxies().length;
+    $('fleetProxyCount').textContent = `${count} prox${count === 1 ? 'y' : 'ies'} loaded`;
+  });
+
   // ─── Fleet Launch ───
   async function fleetLaunch() {
     const selected = Array.from(fleetSelectedIds);
@@ -1209,6 +1232,13 @@
     const storeUrl = getVal('fleetStoreUrl');
     const productUrl = getVal('fleetProductUrl');
     if (!storeUrl && !productUrl) { alert('Enter a Store URL or Product URL.'); return; }
+    const proxies = getFleetProxies();
+    if (proxies.length > 0 && proxies.length < selected.length) {
+      if (!confirm(`You have ${proxies.length} proxies but ${selected.length} users selected. Some bots will share IPs. Continue anyway?`)) return;
+    }
+    if (proxies.length === 0) {
+      if (!confirm('No proxies configured. All bots will use your server IP — this risks spam detection. Continue anyway?')) return;
+    }
 
     connectSSE();
     $('logPanel').innerHTML = ''; logEntryCount = 0;
@@ -1244,7 +1274,7 @@
           itemName: getVal('fleetItemName'),
           variantId: getVal('fleetVariantId'),
           dryRun: $('fleetDryRun').checked,
-          proxyList: gatherProxies(),
+          proxyList: proxies,
         }),
       });
     } catch(e) {

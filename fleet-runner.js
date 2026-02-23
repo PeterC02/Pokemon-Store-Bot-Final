@@ -142,7 +142,12 @@ class FleetRunner extends EventEmitter {
         try {
           const { HttpsProxyAgent } = require("https-proxy-agent");
           instance.proxyAgent = new HttpsProxyAgent(proxy.includes("://") ? proxy : `http://${proxy}`);
-        } catch (_) {}
+          // Log proxy assignment (mask credentials)
+          const masked = proxy.replace(/:([^:@]+)@/, ':***@');
+          this.log(`Bot ${i + 1} (${user.name}): proxy ${masked}`, "info");
+        } catch (e) {
+          this.log(`Bot ${i + 1} (${user.name}): proxy setup failed — ${e.message}`, "error");
+        }
       }
 
       // Forward logs with bot ID + user name prefix
