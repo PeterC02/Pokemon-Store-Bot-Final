@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const path = require("path");
 const { CartBot, browserPool } = require("./bot");
@@ -19,6 +20,26 @@ let activeFleet = null;
 let sessionKeeper = null; // Always-on session refresh loop
 const profileManager = new ProfileManager();
 const userManager = new UserManager();
+
+// ─── Auto-Proxy Generation from IPRoyal .env credentials ───
+function generateProxyList(count) {
+  const host = process.env.IPROYAL_HOST;
+  const port = process.env.IPROYAL_PORT;
+  const user = process.env.IPROYAL_USER;
+  const passTemplate = process.env.IPROYAL_PASS;
+  if (!host || !port || !user || !passTemplate) return [];
+  const proxies = [];
+  for (let i = 1; i <= count; i++) {
+    const sessionId = `bot${i}_${Date.now().toString(36)}`;
+    const pass = passTemplate.replace("{SESSION}", sessionId);
+    proxies.push(`${host}:${port}:${user}:${pass}`);
+  }
+  return proxies;
+}
+
+function hasProxyConfig() {
+  return !!(process.env.IPROYAL_HOST && process.env.IPROYAL_PORT && process.env.IPROYAL_USER && process.env.IPROYAL_PASS);
+}
 
 const app = express();
 const PORT = 3000;
@@ -847,9 +868,15 @@ app.post("/api/fleet/launch", async (req, res) => {
   activeFleet.on("fleet-complete", (result) => broadcastEvent("fleet-complete", result));
   activeFleet.on("fleet-stopped", () => broadcastEvent("fleet-stopped", {}));
 
-  const proxies = (proxyList || []).filter(Boolean);
+  let proxies = (proxyList || []).filter(Boolean);
 
-  res.json({ started: true, runId: activeFleet.runId, botCount: users.length });
+  // Auto-generate proxies from .env if none provided manually
+  if (proxies.length === 0 && hasProxyConfig()) {
+    proxies = generateProxyList(users.length);
+    broadcastLog({ timestamp: new Date().toISOString(), type: "success", message: `[FLEET] Auto-generated ${proxies.length} unique proxy sessions from IPRoyal config.` });
+  }
+
+  res.json({ started: true, runId: activeFleet.runId, botCount: users.length, proxiesAssigned: proxies.length });
 
   try {
     await activeFleet.launch({
@@ -879,6 +906,16 @@ app.post("/api/fleet/stop", (req, res) => {
 app.get("/api/fleet/status", (req, res) => {
   if (!activeFleet) return res.json({ running: false, totalBots: 0, statuses: [] });
   res.json(activeFleet.getStatus());
+});
+
+app.get("/api/proxy/status", (req, res) => {
+  res.json({
+    configured: hasProxyConfig(),
+    provider: hasProxyConfig() ? "IPRoyal" : null,
+    host: process.env.IPROYAL_HOST || null,
+    region: (process.env.IPROYAL_PASS || "").includes("country-gb") ? "United Kingdom" : (process.env.IPROYAL_PASS || "").includes("country-us") ? "United States" : "Auto",
+    mode: "sticky",
+  });
 });
 
 // ─── Warm up browser pool on startup ───

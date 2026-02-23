@@ -288,16 +288,18 @@
           <div class="fg"><label>Item Name (optional)</label><input type="text" id="fleetItemName" placeholder="Pikachu Plush" /></div>
         </div>
         <hr class="divider">
-        <div class="card-title">Proxies — 1 Unique IP Per Bot <span class="badge badge-warn">REQUIRED</span></div>
-        <div class="panel-desc" style="margin-bottom:10px;font-size:0.75rem">Each bot gets its own proxy so every user checks out from a different IP. Paste one proxy per line. You need <strong>at least as many proxies as selected users</strong>.</div>
-        <div class="fg">
-          <label>Proxy List (one per line)</label>
-          <textarea id="fleetProxyList" rows="4" placeholder="ip:port&#10;ip:port:user:pass&#10;http://user:pass@ip:port&#10;socks5://ip:port" style="font-family:monospace;font-size:0.78rem;resize:vertical"></textarea>
-          <div class="hint" id="fleetProxyCount">0 proxies loaded</div>
+        <div class="card-title">Proxies — 1 Unique IP Per Bot</div>
+        <div id="fleetProxyStatus" style="padding:12px 16px;border-radius:8px;font-size:0.82rem;margin-bottom:14px;display:flex;align-items:center;gap:10px;background:var(--surface-2);border:1px solid var(--border)">
+          <span class="spinner" style="width:12px;height:12px;border-width:1.5px"></span>
+          <span style="color:var(--text-dim)">Checking proxy configuration...</span>
         </div>
-        <div class="info-box" style="margin-bottom:14px">
-          <strong>Recommended for lowest latency:</strong><br>
-          Use <strong>residential rotating proxies</strong> with sticky sessions from providers like <strong>Bright Data</strong>, <strong>IPRoyal</strong>, or <strong>Smartproxy</strong>. Use the <code>ip:port:user:pass</code> format. Each bot will get a unique sticky session = unique IP. Datacenter proxies work too but are more likely to be flagged.
+        <!-- Manual override (hidden by default when auto-proxy is configured) -->
+        <div id="fleetProxyManual" style="display:none">
+          <div class="fg">
+            <label>Manual Proxy Override (one per line)</label>
+            <textarea id="fleetProxyList" rows="3" placeholder="ip:port:user:pass" style="font-family:monospace;font-size:0.78rem;resize:vertical"></textarea>
+            <div class="hint" id="fleetProxyCount">0 proxies loaded</div>
+          </div>
         </div>
         <div style="display:flex;align-items:center;gap:12px;margin:10px 0">
           <label class="checkbox-label"><input type="checkbox" id="fleetDryRun" checked /> <strong>Dry Run</strong></label>
@@ -1215,15 +1217,41 @@
   }
 
   // ─── Fleet Proxy Helpers ───
+  let fleetAutoProxy = false;
   function getFleetProxies() {
-    const raw = $('fleetProxyList').value.trim();
+    const raw = ($('fleetProxyList')?.value || '').trim();
     if (!raw) return [];
     return raw.split('\n').map(l => l.trim()).filter(Boolean);
   }
-  $('fleetProxyList').addEventListener('input', function() {
-    const count = getFleetProxies().length;
-    $('fleetProxyCount').textContent = `${count} prox${count === 1 ? 'y' : 'ies'} loaded`;
-  });
+  if ($('fleetProxyList')) {
+    $('fleetProxyList').addEventListener('input', function() {
+      const count = getFleetProxies().length;
+      $('fleetProxyCount').textContent = `${count} prox${count === 1 ? 'y' : 'ies'} loaded`;
+    });
+  }
+
+  async function fleetCheckProxyStatus() {
+    try {
+      const res = await fetch('/api/proxy/status');
+      const data = await res.json();
+      const el = $('fleetProxyStatus');
+      if (data.configured) {
+        fleetAutoProxy = true;
+        el.style.background = 'rgba(0,184,148,0.08)';
+        el.style.borderColor = 'rgba(0,184,148,0.3)';
+        el.innerHTML = `<span style="font-size:1.1rem">&#10004;</span><div><strong style="color:var(--success)">Auto-Proxy Active — ${data.provider}</strong><br><span style="font-size:0.72rem;color:var(--text-muted)">${data.region} &middot; Sticky sessions &middot; 1 unique IP per bot &middot; Auto-generated on launch</span></div>`;
+        $('fleetProxyManual').style.display = 'none';
+      } else {
+        fleetAutoProxy = false;
+        el.style.background = 'rgba(243,156,18,0.08)';
+        el.style.borderColor = 'rgba(243,156,18,0.3)';
+        el.innerHTML = `<span style="font-size:1.1rem">&#9888;</span><div><strong style="color:var(--warning)">No Auto-Proxy Configured</strong><br><span style="font-size:0.72rem;color:var(--text-muted)">Add IPRoyal credentials to .env or paste proxies manually below</span></div>`;
+        $('fleetProxyManual').style.display = 'block';
+      }
+    } catch(_) {
+      $('fleetProxyStatus').innerHTML = '<span style="color:var(--text-dim)">Could not check proxy status</span>';
+    }
+  }
 
   // ─── Fleet Launch ───
   async function fleetLaunch() {
@@ -1232,11 +1260,8 @@
     const storeUrl = getVal('fleetStoreUrl');
     const productUrl = getVal('fleetProductUrl');
     if (!storeUrl && !productUrl) { alert('Enter a Store URL or Product URL.'); return; }
-    const proxies = getFleetProxies();
-    if (proxies.length > 0 && proxies.length < selected.length) {
-      if (!confirm(`You have ${proxies.length} proxies but ${selected.length} users selected. Some bots will share IPs. Continue anyway?`)) return;
-    }
-    if (proxies.length === 0) {
+    const proxies = fleetAutoProxy ? [] : getFleetProxies();
+    if (!fleetAutoProxy && proxies.length === 0) {
       if (!confirm('No proxies configured. All bots will use your server IP — this risks spam detection. Continue anyway?')) return;
     }
 
@@ -1385,6 +1410,7 @@
   $('useCustomSmtp').addEventListener('change', function() { $('smtpFields').style.display = this.checked ? 'block' : 'none'; });
   refreshProfiles();
   fleetRefreshUsers();
+  fleetCheckProxyStatus();
 </script>
 </body>
 </html>
