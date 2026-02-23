@@ -142,9 +142,23 @@ class FleetRunner extends EventEmitter {
         const proxy = proxyList[i % proxyList.length];
         try {
           const { HttpsProxyAgent } = require("https-proxy-agent");
-          instance.proxyAgent = new HttpsProxyAgent(proxy.includes("://") ? proxy : `http://${proxy}`);
+          let proxyUrl;
+          if (proxy.includes("://")) {
+            proxyUrl = proxy; // Already a URL: http://user:pass@host:port
+          } else {
+            // Parse host:port:user:pass format → http://user:pass@host:port
+            const parts = proxy.split(":");
+            if (parts.length === 4) {
+              proxyUrl = `http://${parts[2]}:${parts[3]}@${parts[0]}:${parts[1]}`;
+            } else if (parts.length === 2) {
+              proxyUrl = `http://${parts[0]}:${parts[1]}`;
+            } else {
+              proxyUrl = `http://${proxy}`;
+            }
+          }
+          instance.proxyAgent = new HttpsProxyAgent(proxyUrl);
           // Log proxy assignment (mask credentials)
-          const masked = proxy.replace(/:([^:@]+)@/, ':***@');
+          const masked = proxyUrl.replace(/:([^:@\/]+)@/, ':***@');
           this.log(`Bot ${i + 1} (${user.name}): proxy ${masked}`, "info");
         } catch (e) {
           this.log(`Bot ${i + 1} (${user.name}): proxy setup failed — ${e.message}`, "error");
@@ -287,7 +301,7 @@ class FleetRunner extends EventEmitter {
         dryRun,
         confirmationEmail: confirmationEmail || bot.user.shipping?.email || "",
         smtpConfig,
-        taskIndex,
+        taskIndex: 0, // Set to 0 so fast-checkout's built-in jigAddress is a no-op (fleet-runner already jigged)
       };
 
       if (captchaHarvester) config.captchaHarvester = captchaHarvester;
@@ -340,6 +354,8 @@ class FleetRunner extends EventEmitter {
   stop() {
     this.running = false;
     for (const [botId, bot] of this.bots) {
+      // Signal the FastCheckout instance to abort at next step
+      if (bot.instance) bot.instance.stopped = true;
       if (bot.state !== BOT_STATES.SUCCESS && bot.state !== BOT_STATES.FAILED) {
         this._updateBotState(botId, BOT_STATES.STOPPED, "Stopped by operator");
       }

@@ -121,6 +121,7 @@ class FastCheckout extends EventEmitter {
     // Backup cookie sessions for queue bypass
     this.backupJars = [];
     this.activeJarIndex = 0;
+    this.stopped = false; // Set to true by fleet stop to abort mid-checkout
   }
 
   log(message, type = "info") {
@@ -309,31 +310,31 @@ class FastCheckout extends EventEmitter {
     this.log("Shopify queue detected! Trying backup sessions + polling...", "info");
 
     // QUEUE BYPASS: Spawn 3 backup cookie sessions that try to skip the queue
-    // Different sessions may get different queue positions or skip entirely
+    // Each uses its own jar — no shared state mutation during parallel execution
     const backupAttempts = 3;
+    const origJar = this.jar;
     const backupPromises = [];
     for (let b = 0; b < backupAttempts; b++) {
       backupPromises.push((async () => {
         const backupJar = new CookieJar();
-        const origJar = this.jar;
         try {
-          // Use a fresh cookie session
-          this.jar = backupJar;
           await this._sleep(200 + Math.random() * 500);
+          // Temporarily swap jar for this request only
+          const savedJar = this.jar;
+          this.jar = backupJar;
           const freshRes = await this.request(url);
+          this.jar = savedJar; // Restore immediately
           const freshBody = await freshRes.text();
           if (!freshBody.includes("queue") && !freshBody.includes("throttle") && !freshBody.includes("You are in line")) {
             this.log(`Backup session ${b + 1} bypassed queue!`, "success");
             return { body: freshBody, jar: backupJar, bypassed: true };
           }
         } catch (_) {}
-        this.jar = origJar;
         return { bypassed: false };
       })());
     }
 
     // Race: check if any backup session bypassed the queue
-    const origJar = this.jar;
     const backupResults = await Promise.all(backupPromises);
     const bypassed = backupResults.find(r => r.bypassed);
     if (bypassed) {
@@ -409,7 +410,7 @@ class FastCheckout extends EventEmitter {
       },
     };
 
-    const res = await fetch("https://deposit.shopifycs.com/sessions", {
+    const fetchOpts = {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -418,7 +419,10 @@ class FastCheckout extends EventEmitter {
       },
       body: JSON.stringify(payload),
       timeout: 10000,
-    });
+    };
+    if (this.proxyAgent) fetchOpts.agent = this.proxyAgent;
+
+    const res = await fetch("https://deposit.shopifycs.com/sessions", fetchOpts);
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
@@ -1201,7 +1205,7 @@ class FastCheckout extends EventEmitter {
           city: "${jiggedDetails.city || ""}"
           province: "${jiggedDetails.state || ""}"
           zip: "${jiggedDetails.zip || ""}"
-          country: "${jiggedDetails.country || "US"}"
+          country: "${jiggedDetails.country || "GB"}"
           phone: "${jiggedDetails.phone || ""}"
         }
       }) {
@@ -1395,6 +1399,7 @@ class FastCheckout extends EventEmitter {
 
     try {
       // Step 1: Resolve variant
+      this._checkAbort();
       const resolvedVariant = await this.resolveVariant({ storeUrl: baseUrl, productUrl, itemName, variantId });
       if (!resolvedVariant) return { success: false, step: "resolve-variant", logs: this.getLogs() };
 
@@ -1416,6 +1421,7 @@ class FastCheckout extends EventEmitter {
       if (gqlResult === null) this.log("GraphQL unavailable, using REST checkout.", "info");
 
       // Step 2: Try direct checkout link first (skip ATC + create checkout)
+      this._checkAbort();
       let checkoutUrl = await this.directCheckout(baseUrl, resolvedVariant);
 
       if (checkoutUrl) {
@@ -1434,6 +1440,7 @@ class FastCheckout extends EventEmitter {
       }
 
       // Step 3: Submit shipping (with address jig if taskIndex provided)
+      this._checkAbort();
       const jiggedDetails = this.jigAddress(checkoutDetails, config.taskIndex || 0);
       let currentUrl = checkoutUrl;
       if (Object.keys(jiggedDetails).length > 0) {
@@ -1441,9 +1448,11 @@ class FastCheckout extends EventEmitter {
       }
 
       // Step 4: Select shipping rate
+      this._checkAbort();
       currentUrl = await this.selectShippingRate(currentUrl);
 
       // Step 5: Submit payment (with proper tokenization)
+      this._checkAbort();
       const paid = await this.submitPayment(currentUrl, paymentDetails, dryRun);
       const elapsed = ((Date.now() - this.startTime) / 1000).toFixed(1);
 
@@ -1540,6 +1549,10 @@ class FastCheckout extends EventEmitter {
   }
 
   _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  _checkAbort() {
+    if (this.stopped) throw new Error("Bot stopped by operator");
+  }
 }
 
 module.exports = { FastCheckout, CookieJar };

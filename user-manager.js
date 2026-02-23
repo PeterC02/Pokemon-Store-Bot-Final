@@ -9,6 +9,19 @@ const path = require("path");
 const USERS_PATH = path.join(__dirname, "users.json");
 const MAX_USERS = 50;
 
+// Map common country names to Shopify-compatible ISO codes
+const COUNTRY_MAP = {
+  'united kingdom': 'GB', 'uk': 'GB', 'great britain': 'GB', 'england': 'GB',
+  'united states': 'US', 'usa': 'US', 'us': 'US', 'america': 'US',
+  'canada': 'CA', 'australia': 'AU', 'ireland': 'IE', 'germany': 'DE',
+  'france': 'FR', 'japan': 'JP', 'netherlands': 'NL', 'new zealand': 'NZ',
+};
+function normalizeCountry(c) {
+  if (!c) return 'GB';
+  const lower = c.trim().toLowerCase();
+  return COUNTRY_MAP[lower] || (c.length === 2 ? c.toUpperCase() : c);
+}
+
 class UserManager {
   constructor() {
     this.users = this._load();
@@ -122,7 +135,7 @@ class UserManager {
         county: user.shipping?.county || "",
         state: user.shipping?.county || user.shipping?.state || "",
         zip: user.shipping?.zip || "",
-        country: user.shipping?.country || "GB",
+        country: normalizeCountry(user.shipping?.country),
         phone: user.shipping?.phone || "",
       },
       paymentDetails: {
