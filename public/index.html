@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CartBot Pro — Drop Checkout Engine</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0b0d14; --surface: #141722; --surface-2: #1c2030; --surface-3: #252a3a;
+      --border: #2a2f42; --text: #e4e6f0; --text-muted: #7a7f96; --text-dim: #555a6e;
+      --accent: #6c5ce7; --accent-hover: #7e70f0; --accent-glow: rgba(108,92,231,0.25);
+      --success: #00b894; --error: #e74c3c; --warning: #f39c12; --info: #3498db;
+      --radius: 14px; --radius-sm: 8px;
+    }
+    body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ─── Layout ─── */
+    .app { display: grid; grid-template-columns: 260px 1fr 340px; grid-template-rows: 56px 1fr; height: 100vh; }
+    .topbar { grid-column: 1/-1; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; gap: 16px; z-index: 10; }
+    .sidebar { grid-row: 2; background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; padding: 12px; }
+    .main { grid-row: 2; overflow-y: auto; padding: 24px; }
+    .panel-right { grid-row: 2; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+
+    /* ─── Topbar ─── */
+    .logo { font-size: 1.1rem; font-weight: 800; background: linear-gradient(135deg, var(--accent), #a29bfe); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .topbar-status { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 0.8rem; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .status-dot.idle { background: var(--text-dim); }
+    .status-dot.running { background: var(--accent); animation: pulse 1.2s infinite; }
+    .status-dot.success { background: var(--success); }
+    .status-dot.error { background: var(--error); }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.3} }
+    .topbar-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: 0.78rem; cursor: pointer; transition: all 0.15s; font-weight: 600; }
+    .topbar-btn:hover { border-color: var(--accent); background: var(--accent-glow); }
+    .topbar-btn.danger { border-color: var(--error); color: var(--error); }
+    .topbar-btn.danger:hover { background: rgba(231,76,60,0.15); }
+
+    /* ─── Sidebar Nav ─── */
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.82rem; font-weight: 500; color: var(--text-muted); transition: all 0.15s; margin-bottom: 2px; }
+    .nav-item:hover { background: var(--surface-2); color: var(--text); }
+    .nav-item.active { background: var(--accent-glow); color: var(--accent); font-weight: 600; }
+    .nav-item .nav-icon { width: 20px; text-align: center; font-size: 1rem; }
+    .nav-section { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-dim); padding: 16px 14px 6px; font-weight: 700; }
+
+    /* ─── Main Content Panels ─── */
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .panel-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 4px; }
+    .panel-desc { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 20px; }
+
+    /* ─── Cards ─── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+    .card-title { font-size: 0.9rem; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .card-title .badge { font-size: 0.65rem; padding: 2px 8px; border-radius: 4px; font-weight: 700; }
+    .badge-fast { background: rgba(231,76,60,0.15); color: var(--error); }
+    .badge-ok { background: rgba(0,184,148,0.15); color: var(--success); }
+    .badge-warn { background: rgba(243,156,18,0.15); color: var(--warning); }
+
+    /* ─── Form Elements ─── */
+    .fg { margin-bottom: 12px; }
+    .fg label { display: block; font-size: 0.72rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .fg input, .fg select, .fg textarea { width: 100%; padding: 9px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.85rem; outline: none; transition: border-color 0.15s; font-family: inherit; }
+    .fg input:focus, .fg select:focus, .fg textarea:focus { border-color: var(--accent); }
+    .fg input::placeholder, .fg textarea::placeholder { color: var(--text-dim); }
+    .fg .hint { font-size: 0.68rem; color: var(--text-dim); margin-top: 3px; }
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+    /* ─── Buttons ─── */
+    .btn { padding: 10px 18px; border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-warning { background: var(--warning); color: #fff; }
+    .btn-danger { background: transparent; border: 1px solid var(--error); color: var(--error); }
+    .btn-danger:hover:not(:disabled) { background: rgba(231,76,60,0.15); }
+    .btn-ghost { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+    .btn-ghost:hover { border-color: var(--accent); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-row { display: flex; gap: 8px; margin-top: 14px; }
+    .btn-lg { padding: 14px 28px; font-size: 1rem; border-radius: 10px; }
+    .btn-block { width: 100%; justify-content: center; }
+
+    /* ─── Right Panel: Logs ─── */
+    .log-header { padding: 14px 16px; border-bottom: 1px solid var(--border); font-size: 0.82rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .log-header .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--error); animation: pulse 1.2s infinite; display: none; }
+    .log-header .live-dot.on { display: inline-block; }
+    .log-panel { flex: 1; overflow-y: auto; padding: 10px 14px; font-family: 'Cascadia Code','Fira Code','Consolas',monospace; font-size: 0.72rem; line-height: 1.8; }
+    .log-panel:empty::after { content: "Logs will stream here in real-time..."; color: var(--text-dim); }
+    .log-entry .time { color: var(--text-dim); margin-right: 6px; }
+    .log-entry.success .msg { color: var(--success); }
+    .log-entry.error .msg { color: var(--error); }
+    .log-entry.info .msg { color: var(--text); }
+
+    /* ─── Test Results ─── */
+    .test-result { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 0.8rem; }
+    .test-result.pass { background: rgba(0,184,148,0.08); border: 1px solid rgba(0,184,148,0.2); }
+    .test-result.fail { background: rgba(231,76,60,0.08); border: 1px solid rgba(231,76,60,0.2); }
+    .test-result.warn { background: rgba(243,156,18,0.08); border: 1px solid rgba(243,156,18,0.2); }
+    .test-icon { font-size: 1rem; width: 20px; text-align: center; }
+    .test-name { font-weight: 600; min-width: 140px; }
+    .test-detail { color: var(--text-muted); flex: 1; }
+    .test-ms { color: var(--text-dim); font-size: 0.72rem; }
+
+    /* ─── Status Banner ─── */
+    .status-banner { display: none; padding: 12px 16px; border-radius: var(--radius-sm); font-size: 0.85rem; font-weight: 600; margin-bottom: 16px; align-items: center; gap: 8px; }
+    .status-banner.visible { display: flex; }
+    .status-banner.running { background: rgba(108,92,231,0.12); color: var(--accent); border: 1px solid rgba(108,92,231,0.25); }
+    .status-banner.success { background: rgba(0,184,148,0.12); color: var(--success); border: 1px solid rgba(0,184,148,0.25); }
+    .status-banner.error { background: rgba(231,76,60,0.12); color: var(--error); border: 1px solid rgba(231,76,60,0.25); }
+    .spinner { width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Misc ─── */
+    .screenshot-gallery { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .screenshot-gallery img { max-width: 200px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; }
+    .checkbox-label { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 0.82rem; }
+    .checkbox-label input { accent-color: var(--accent); width: 15px; height: 15px; }
+    .info-box { padding: 10px 14px; border-radius: 6px; font-size: 0.75rem; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted); margin-top: 10px; }
+    .info-box code { background: var(--surface-3); padding: 1px 5px; border-radius: 3px; font-size: 0.72rem; }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; }
+    .tag-purple { background: rgba(108,92,231,0.15); color: var(--accent); }
+    .tag-green { background: rgba(0,184,148,0.15); color: var(--success); }
+    .tag-red { background: rgba(231,76,60,0.15); color: var(--error); }
+  </style>
+</head>
+<body>
+<div class="app">
+  <!-- ═══ TOPBAR ═══ -->
+  <div class="topbar">
+    <div class="logo">CartBot Pro</div>
+    <span class="tag tag-purple">A-Tier</span>
+    <div class="topbar-status">
+      <span class="status-dot idle" id="globalDot"></span>
+      <span id="globalStatus" style="color:var(--text-muted)">Idle</span>
+      <button class="topbar-btn" onclick="runSelfTest()">Run Diagnostics</button>
+      <button class="topbar-btn" id="topRunBtn" onclick="runBot()">Launch</button>
+      <button class="topbar-btn danger" id="topStopBtn" onclick="stopBot()" disabled>Stop</button>
+    </div>
+  </div>
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <div class="sidebar">
+    <div class="nav-item active" onclick="showPanel('quickstart')" id="nav-quickstart" style="background:var(--accent-glow);border:1px solid rgba(108,92,231,0.3);margin-bottom:8px"><span class="nav-icon">&#128640;</span> <strong>Quick Start</strong></div>
+    <div class="nav-section">Step-by-Step Setup</div>
+    <div class="nav-item" onclick="showPanel('target')" id="nav-target"><span class="nav-icon" style="opacity:0.5">1.</span> Target Store</div>
+    <div class="nav-item" onclick="showPanel('checkout')" id="nav-checkout"><span class="nav-icon" style="opacity:0.5">2.</span> Shipping Info</div>
+    <div class="nav-item" onclick="showPanel('payment')" id="nav-payment"><span class="nav-icon" style="opacity:0.5">3.</span> Payment</div>
+    <div class="nav-item" onclick="showPanel('tasks')" id="nav-tasks"><span class="nav-icon" style="opacity:0.5">4.</span> Speed & Sessions</div>
+    <div class="nav-section">Optional</div>
+    <div class="nav-item" onclick="showPanel('captcha')" id="nav-captcha"><span class="nav-icon">&#128274;</span> CAPTCHA</div>
+    <div class="nav-item" onclick="showPanel('monitor')" id="nav-monitor"><span class="nav-icon">&#128225;</span> Stock Monitor</div>
+    <div class="nav-item" onclick="showPanel('profiles')" id="nav-profiles"><span class="nav-icon">&#128100;</span> Profiles</div>
+    <div class="nav-section">Tools</div>
+    <div class="nav-item" onclick="showPanel('test')" id="nav-test"><span class="nav-icon">&#128295;</span> Diagnostics</div>
+    <div class="nav-item" onclick="showPanel('advanced')" id="nav-advanced"><span class="nav-icon">&#9881;</span> Advanced</div>
+  </div>
+
+  <!-- ═══ MAIN CONTENT ═══ -->
+  <div class="main">
+    <div id="statusBanner" class="status-banner"></div>
+
+    <!-- ─── QUICK START ─── -->
+    <div class="panel active" id="panel-quickstart">
+      <div class="panel-title">Quick Start Guide</div>
+      <div class="panel-desc">Follow these steps to set up for a Pokemon TCG drop. Most drops only need steps 1-4.</div>
+
+      <div class="card" style="border-color:var(--accent);background:rgba(108,92,231,0.05);">
+        <div class="card-title">Which Mode Should I Use?</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div style="padding:12px;border-radius:8px;border:2px solid var(--success);background:rgba(0,184,148,0.06)">
+            <div style="font-weight:700;font-size:0.9rem;color:var(--success);margin-bottom:4px">API Fast Mode</div>
+            <div style="font-size:0.75rem;color:var(--text-muted)">Best for <strong>all Shopify stores</strong> — most Pokemon TCG retailers, card shops, and Shopify-powered sites. ~1s checkout. <strong>Use this.</strong></div>
+          </div>
+          <div style="padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2)">
+            <div style="font-weight:700;font-size:0.85rem;color:var(--text-muted);margin-bottom:4px">Pokemon Center Mode</div>
+            <div style="font-size:0.75rem;color:var(--text-dim)">Only for <strong>pokemoncenter.com</strong> itself (custom Next.js site, not Shopify). Most drops aren't here.</div>
+          </div>
+        </div>
+        <div class="info-box">Browser Mode is a fallback for non-Shopify sites. You almost never need it for Pokemon drops.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="font-size:1rem">Setup Checklist</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div onclick="showPanel('target')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);cursor:pointer;transition:all 0.15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+            <span style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85rem;flex-shrink:0">1</span>
+            <div><div style="font-weight:600;font-size:0.85rem">Enter Store URL + Product</div><div style="font-size:0.72rem;color:var(--text-muted)">Paste the Shopify store URL. Add variant ID if you have it (fastest).</div></div>
+          </div>
+          <div onclick="showPanel('checkout')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);cursor:pointer;transition:all 0.15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+            <span style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85rem;flex-shrink:0">2</span>
+            <div><div style="font-weight:600;font-size:0.85rem">Fill Shipping Address</div><div style="font-size:0.72rem;color:var(--text-muted)">Your real shipping address. Bot auto-jigs it across tasks to avoid limits.</div></div>
+          </div>
+          <div onclick="showPanel('payment')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);cursor:pointer;transition:all 0.15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+            <span style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85rem;flex-shrink:0">3</span>
+            <div><div style="font-weight:600;font-size:0.85rem">Enter Payment Card</div><div style="font-size:0.72rem;color:var(--text-muted)">Card is tokenized securely via Shopify's vault. Never sent in plain text.</div></div>
+          </div>
+          <div onclick="showPanel('tasks')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);cursor:pointer;transition:all 0.15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+            <span style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85rem;flex-shrink:0">4</span>
+            <div><div style="font-weight:600;font-size:0.85rem">Set Task Count + Start Session Keeper</div><div style="font-size:0.72rem;color:var(--text-muted)">Set 3-5 tasks. Start Session Keeper on drop day morning — sessions stay warm all day.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="background:var(--surface-2);border-style:dashed">
+        <div class="card-title">Drop Day Workflow</div>
+        <div style="font-size:0.8rem;line-height:1.8;color:var(--text-muted)">
+          <strong style="color:var(--text)">Morning:</strong> Complete steps 1-4 above. Start <strong>Session Keeper</strong>. Optionally start <strong>Stock Monitor</strong> and <strong>CAPTCHA Harvester</strong>.<br>
+          <strong style="color:var(--text)">When drop happens:</strong> If Stock Monitor is running, checkout fires automatically. Otherwise, click <strong>Launch</strong> in the top bar.<br>
+          <strong style="color:var(--text)">First time?</strong> Do a test run first — keep <strong>Dry Run</strong> checked. It does everything except submit payment.
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-lg btn-block" onclick="showPanel('target')" style="margin-top:8px">Start Setup &rarr;</button>
+    </div>
+
+    <!-- ─── TARGET & MODE ─── -->
+    <div class="panel" id="panel-target">
+      <div class="panel-title">Step 1: Target Store</div>
+      <div class="panel-desc">Choose your checkout engine and configure the target product.</div>
+
+      <div class="card">
+        <div class="card-title">Checkout Engine</div>
+        <div class="row-3" style="gap:12px">
+          <div class="mode-card active" id="modeCardFast" onclick="setMode('fast')" style="padding:14px;border-radius:10px;border:2px solid var(--accent);background:rgba(108,92,231,0.08);cursor:pointer;text-align:center;">
+            <div style="font-size:1.5rem">&#9889;</div>
+            <div style="font-weight:700;font-size:0.85rem;margin:4px 0">API Fast</div>
+            <div style="font-size:0.68rem;color:var(--text-muted)">~1s checkout<br>Shopify stores</div>
+          </div>
+          <div class="mode-card" id="modeCardBrowser" onclick="setMode('browser')" style="padding:14px;border-radius:10px;border:2px solid var(--border);background:var(--surface-2);cursor:pointer;text-align:center;">
+            <div style="font-size:1.5rem">&#127760;</div>
+            <div style="font-weight:700;font-size:0.85rem;margin:4px 0">Browser</div>
+            <div style="font-size:0.68rem;color:var(--text-muted)">Any site<br>Puppeteer</div>
+          </div>
+          <div class="mode-card" id="modeCardPC" onclick="setMode('pokemon')" style="padding:14px;border-radius:10px;border:2px solid var(--border);background:var(--surface-2);cursor:pointer;text-align:center;">
+            <div style="font-size:1.5rem">&#11088;</div>
+            <div style="font-weight:700;font-size:0.85rem;margin:4px 0">Pokemon Ctr</div>
+            <div style="font-size:0.68rem;color:var(--text-muted)">Custom module<br>Next.js</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fast Mode Config -->
+      <div class="card" id="fastConfig">
+        <div class="card-title">Product Target <span class="badge badge-fast">FAST MODE</span></div>
+        <div class="fg"><label>Store URL</label><input type="url" id="fastStoreUrl" placeholder="https://store.example.com" /></div>
+        <div class="row-2">
+          <div class="fg"><label>Product URL (optional)</label><input type="url" id="fastProductUrl" placeholder="https://store.com/products/item" /></div>
+          <div class="fg"><label>Variant ID (fastest)</label><input type="text" id="fastVariantId" placeholder="e.g. 39256789012" /><div class="hint">Skip product resolution — paste from /products/handle.json</div></div>
+        </div>
+        <div class="fg"><label>Item Name (optional)</label><input type="text" id="fastItemName" placeholder="Pikachu Plush" /><div class="hint">Fuzzy search if no variant ID or product URL given</div></div>
+      </div>
+
+      <!-- Browser Mode Config -->
+      <div class="card" id="browserConfig" style="display:none">
+        <div class="card-title">Browser Target <span class="badge badge-ok">BROWSER</span></div>
+        <div class="fg"><label>Target URL</label><input type="url" id="url" placeholder="https://www.pokemoncenter.com/category/plush" /></div>
+        <div class="fg"><label>Item Name</label><input type="text" id="itemName" placeholder="Pikachu Plush (fuzzy matched)" /></div>
+        <div class="row-2" style="margin-top:8px">
+          <label class="checkbox-label"><input type="checkbox" id="clickItemFirst" checked /> Click item first</label>
+          <label class="checkbox-label"><input type="checkbox" id="headless" /> Headless mode</label>
+        </div>
+        <label class="checkbox-label" style="margin-top:8px"><input type="checkbox" id="fullCheckout" checked /> Full checkout (not just ATC)</label>
+      </div>
+
+      <!-- Pokemon Center Config -->
+      <div class="card" id="pokemonConfig" style="display:none">
+        <div class="card-title">Pokemon Center <span class="badge badge-warn">CUSTOM</span></div>
+        <div class="fg"><label>Product URL</label><input type="url" id="pcProductUrl" placeholder="https://www.pokemoncenter.com/product/..." /></div>
+        <div class="fg"><label>Item Name (optional)</label><input type="text" id="pcItemName" placeholder="Elite Trainer Box" /></div>
+        <div class="row-2">
+          <div class="fg"><label>Account Email</label><input type="email" id="pcEmail" placeholder="your@email.com" /></div>
+          <div class="fg"><label>Account Password</label><input type="text" id="pcPassword" placeholder="For saved payment" /></div>
+        </div>
+      </div>
+
+      <div class="card" style="background:var(--surface-2);border-style:dashed;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <label class="checkbox-label"><input type="checkbox" id="dryRun" checked /> <strong>Dry Run</strong> — test everything but don't submit payment</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── CHECKOUT DETAILS ─── -->
+    <div class="panel" id="panel-checkout">
+      <div class="panel-title">Step 2: Shipping Info</div>
+      <div class="panel-desc">Your shipping address and contact info. Auto-jigged across tasks to avoid 1-per-address limits.</div>
+      <div class="card">
+        <div class="fg"><label>Email</label><input type="email" id="email" placeholder="you@email.com" /></div>
+        <div class="fg"><label>Confirmation Email</label><input type="email" id="confirmationEmail" placeholder="Send order confirmation to..." /></div>
+        <hr class="divider">
+        <div class="row-2">
+          <div class="fg"><label>First Name</label><input type="text" id="firstName" placeholder="John" /></div>
+          <div class="fg"><label>Last Name</label><input type="text" id="lastName" placeholder="Doe" /></div>
+        </div>
+        <div class="fg"><label>Address</label><input type="text" id="address" placeholder="123 Main St" /></div>
+        <div class="fg"><label>Address Line 2</label><input type="text" id="address2" placeholder="Apt, Suite (optional)" /></div>
+        <div class="row-3">
+          <div class="fg"><label>City</label><input type="text" id="city" placeholder="New York" /></div>
+          <div class="fg"><label>State</label><input type="text" id="state" placeholder="NY" /></div>
+          <div class="fg"><label>ZIP</label><input type="text" id="zip" placeholder="10001" /></div>
+        </div>
+        <div class="row-2">
+          <div class="fg"><label>Country</label><input type="text" id="country" placeholder="US" /></div>
+          <div class="fg"><label>Phone</label><input type="tel" id="phone" placeholder="555-123-4567" /></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">SMTP (Optional)</div>
+        <label class="checkbox-label"><input type="checkbox" id="useCustomSmtp" /> Use custom SMTP for confirmation emails</label>
+        <div id="smtpFields" style="margin-top:10px;display:none">
+          <div class="row-2">
+            <div class="fg"><label>SMTP Host</label><input type="text" id="smtpHost" placeholder="smtp.gmail.com" /></div>
+            <div class="fg"><label>Port</label><input type="text" id="smtpPort" placeholder="587" /></div>
+          </div>
+          <div class="row-2">
+            <div class="fg"><label>User</label><input type="text" id="smtpUser" placeholder="user@gmail.com" /></div>
+            <div class="fg"><label>Password</label><input type="text" id="smtpPass" placeholder="app password" /></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── PAYMENT ─── -->
+    <div class="panel" id="panel-payment">
+      <div class="panel-title">Step 3: Payment</div>
+      <div class="panel-desc">Card info is tokenized via Shopify's secure vault — never sent in plain text.</div>
+      <div class="card">
+        <div class="fg"><label>Card Number</label><input type="text" id="cardNumber" placeholder="4111 1111 1111 1111" /></div>
+        <div class="fg"><label>Name on Card</label><input type="text" id="cardName" placeholder="John Doe" /></div>
+        <div class="row-3">
+          <div class="fg"><label>Exp Month</label><input type="text" id="expiryMonth" placeholder="12" /></div>
+          <div class="fg"><label>Exp Year</label><input type="text" id="expiryYear" placeholder="2028" /></div>
+          <div class="fg"><label>CVV</label><input type="text" id="cvv" placeholder="123" /></div>
+        </div>
+        <div class="info-box">Payment is tokenized via <code>deposit.shopifycs.com/sessions</code> before submission. Your card number never touches the store's server directly.</div>
+      </div>
+    </div>
+
+    <!-- ─── TASKS & PROXIES ─── -->
+    <div class="panel" id="panel-tasks">
+      <div class="panel-title">Step 4: Speed & Sessions</div>
+      <div class="panel-desc">Set concurrent tasks, proxies, and the Session Keeper. Start the keeper on drop day morning.</div>
+      <div class="card">
+        <div class="card-title">Concurrency</div>
+        <div class="row-2">
+          <div class="fg"><label>Concurrent Tasks (1-50)</label><input type="number" id="taskCount" min="1" max="50" value="1" /><div class="hint">Each task gets unique proxy + UA + jigged address</div></div>
+          <div style="display:flex;align-items:flex-end;gap:8px;">
+            <button class="btn btn-warning btn-block" onclick="preWarmSessions()">Pre-Warm Sessions</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Proxy List</div>
+        <div class="fg"><label>Proxies (one per line)</label><textarea id="proxyList" rows="5" placeholder="ip:port&#10;user:pass@ip:port&#10;http://ip:port"></textarea></div>
+        <div class="fg"><label>Rotation Strategy</label>
+          <select id="proxyStrategy"><option value="round-robin">Round Robin</option><option value="random">Random</option><option value="sticky">Sticky</option></select>
+        </div>
+      </div>
+      <div class="card" style="border-color:var(--accent);background:rgba(108,92,231,0.05);">
+        <div class="card-title">Session Keeper <span class="badge badge-fast">ALWAYS-ON</span></div>
+        <div class="hint" style="margin-bottom:10px">Start this in the morning on drop day. Sessions stay warm all day — auto-refreshes before they expire. When stock appears, checkout fires instantly with pre-warmed sessions.</div>
+        <div class="row-2">
+          <div class="fg"><label>Refresh Interval (min)</label><input type="number" id="keeperInterval" min="10" max="240" value="90" /><div class="hint">Sessions refresh before 4h expiry</div></div>
+          <div class="fg"><label>Tasks to Keep Warm</label><input type="number" id="keeperTasks" min="1" max="50" value="5" /></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-block" onclick="startSessionKeeper()" id="keeperStartBtn">Start Session Keeper</button>
+          <button class="btn btn-danger" onclick="stopSessionKeeper()" id="keeperStopBtn" disabled>Stop</button>
+        </div>
+        <div id="keeperStatus" class="hint" style="margin-top:8px">Not running. Start on drop day morning.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Session Persistence <span class="badge badge-ok">AES-256</span></div>
+        <div class="hint" style="margin-bottom:10px">Save warmed sessions to encrypted disk. Restore after server restart — no re-warming needed.</div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="saveSessions()">Save Sessions</button>
+          <button class="btn btn-ghost" onclick="loadSessions()">Load Sessions</button>
+        </div>
+        <div id="sessionStatus" class="hint" style="margin-top:8px">No saved sessions.</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Variant Pre-Poller <span class="badge badge-fast">INSTANT ATC</span></div>
+        <div class="hint" style="margin-bottom:10px">Polls products.json for new variants. The moment a new product/variant appears, the ID is captured instantly — zero delay on drop.</div>
+        <div class="btn-row">
+          <button class="btn btn-success" onclick="startVariantPoll()">Start Polling</button>
+        </div>
+        <div id="variantPollStatus" class="hint" style="margin-top:8px">Not polling.</div>
+      </div>
+      <div class="info-box">
+        <strong>Webhook Trigger:</strong> External services can POST to <code>/api/webhook-trigger</code> with <code>{variantId, storeUrl, profileId, taskCount, dryRun}</code> to instantly start checkout.
+      </div>
+    </div>
+
+    <!-- ─── CAPTCHA ─── -->
+    <div class="panel" id="panel-captcha">
+      <div class="panel-title">CAPTCHA Solver</div>
+      <div class="panel-desc">API keys for solving services. reCAPTCHA checkbox + Turnstile auto-pass work free.</div>
+      <div class="card">
+        <div class="card-title">API Keys</div>
+        <div class="fg"><label>2Captcha</label><input type="text" id="captchaApiKey2c" placeholder="~$2.99/1000 solves, ~20s avg" /></div>
+        <div class="fg"><label>Anti-Captcha / CapMonster</label><input type="text" id="captchaApiKeyAc" placeholder="~$0.60/1000 solves, ~15s avg" /></div>
+        <div class="fg"><label>CapSolver</label><input type="text" id="captchaApiKeyCs" placeholder="~$0.80/1000 solves, ~6s avg" /></div>
+        <div class="info-box" style="background:rgba(0,184,148,0.08);border-color:rgba(0,184,148,0.25);color:var(--success)"><strong>CapSolver is the fastest provider (~6s avg).</strong> With 10 windows, the token bank fills to max in ~12 seconds. Recommended for drops.</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Token Pre-Harvester <span class="badge badge-fast">0ms INJECT</span></div>
+        <div class="hint" style="margin-bottom:10px">Pre-solve CAPTCHAs in background windows. Banked tokens inject instantly during checkout.</div>
+        <div class="row-2">
+          <div class="fg"><label>CAPTCHA Page URL</label><input type="url" id="harvesterSiteUrl" placeholder="https://store.com/checkout" /></div>
+          <div class="fg"><label>Sitekey</label><input type="text" id="harvesterSitekey" placeholder="6Le..." /></div>
+        </div>
+        <div class="row-2">
+          <div class="fg"><label>Type</label><select id="harvesterType"><option value="recaptchav2">reCAPTCHA v2</option><option value="hcaptcha">hCaptcha</option></select></div>
+          <div class="fg"><label>Windows (1-10)</label><input type="number" id="harvesterWindows" min="1" max="10" value="3" /></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="startHarvester()" style="background:#9b59b6" id="harvStartBtn">Start Harvester</button>
+          <button class="btn btn-danger" onclick="stopHarvester()" id="harvStopBtn">Stop</button>
+        </div>
+        <div id="harvesterStatus" class="hint" style="margin-top:8px">Harvester idle. Supports up to 10 simultaneous windows.</div>
+      </div>
+
+      <div class="card" id="captchaViewerCard" style="display:none">
+        <div class="card-title">Live CAPTCHA Viewer <span class="badge badge-ok" id="harvLiveBadge">LIVE</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px" id="harvWindowStats"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="harvTokenBar"></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px" id="harvScreenshots"></div>
+        <div class="hint" style="margin-top:8px">Screenshots refresh every 3 seconds. Each window solves CAPTCHAs independently.</div>
+      </div>
+    </div>
+
+    <!-- ─── STOCK MONITOR ─── -->
+    <div class="panel" id="panel-monitor">
+      <div class="panel-title">Stock Monitor</div>
+      <div class="panel-desc">Polls for stock changes and auto-triggers checkout when detected.</div>
+      <div class="card">
+        <div class="fg"><label>Product URL to Monitor</label><input type="url" id="monitorProductUrl" placeholder="https://store.com/products/item" /></div>
+        <div class="row-2">
+          <div class="fg"><label>Poll Interval (ms)</label><input type="number" id="monitorInterval" value="2000" /></div>
+          <div class="fg"><label>Max Duration (min)</label><input type="number" id="monitorDuration" value="30" /></div>
+        </div>
+        <div class="fg"><label>Discord Webhook URL</label><input type="url" id="discordWebhookUrl" placeholder="https://discord.com/api/webhooks/..." /><div class="hint">Get notified on Discord when stock is found</div></div>
+        <div class="btn-row">
+          <button class="btn btn-success btn-block" id="monitorStartBtn" onclick="startMonitor()">Start Monitoring</button>
+          <button class="btn btn-danger" id="monitorStopBtn" onclick="stopMonitor()" disabled>Stop</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── PROFILES ─── -->
+    <div class="panel" id="panel-profiles">
+      <div class="panel-title">User Profiles</div>
+      <div class="panel-desc">Save up to 50 checkout profiles. Load them instantly before a drop.</div>
+      <div class="card">
+        <div class="row-2">
+          <div class="fg"><label>Profile Name</label><input type="text" id="profileName" placeholder="My Profile 1" /></div>
+          <div style="display:flex;align-items:flex-end;gap:6px">
+            <button class="btn btn-primary" onclick="saveProfile()">Save Current</button>
+            <button class="btn btn-danger" onclick="deleteProfile()">Delete</button>
+          </div>
+        </div>
+        <div class="fg"><label>Load Profile</label><select id="profileSelect" onchange="loadProfile()"><option value="">-- Select --</option></select></div>
+      </div>
+    </div>
+
+    <!-- ─── DIAGNOSTICS ─── -->
+    <div class="panel" id="panel-test">
+      <div class="panel-title">Diagnostics</div>
+      <div class="panel-desc">Run a full system check before a drop. Tests HTTP/2, TLS, cookies, proxies, payment, and store connectivity.</div>
+      <div class="card">
+        <button class="btn btn-primary btn-lg btn-block" onclick="runSelfTest()">Run Full Diagnostic Suite</button>
+        <div id="testResults" style="margin-top:16px"></div>
+      </div>
+    </div>
+
+    <!-- ─── ADVANCED ─── -->
+    <div class="panel" id="panel-advanced">
+      <div class="panel-title">Advanced Settings</div>
+      <div class="panel-desc">Browser mode selectors, email config, and other tweaks.</div>
+      <div class="card">
+        <div class="card-title">Custom Selectors (Browser Mode)</div>
+        <div class="row-2">
+          <div class="fg"><label>Add to Cart</label><input type="text" id="selAddToCart" placeholder="Auto-detected" /></div>
+          <div class="fg"><label>Checkout</label><input type="text" id="selCheckout" placeholder="Auto-detected" /></div>
+        </div>
+        <div class="row-2">
+          <div class="fg"><label>Guest Checkout</label><input type="text" id="selGuest" placeholder="Auto-detected" /></div>
+          <div class="fg"><label>Continue</label><input type="text" id="selContinue" placeholder="Auto-detected" /></div>
+        </div>
+        <div class="fg"><label>Submit/Pay</label><input type="text" id="selSubmit" placeholder="Auto-detected" /></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ RIGHT PANEL: LOGS ═══ -->
+  <div class="panel-right">
+    <div class="log-header">
+      <span class="live-dot" id="liveDot"></span>
+      Live Logs
+      <span style="margin-left:auto;font-size:0.7rem;color:var(--text-dim)" id="logCount">0 entries</span>
+    </div>
+    <div class="log-panel" id="logPanel"></div>
+    <div id="screenshotGallery" class="screenshot-gallery" style="padding:8px 14px"></div>
+  </div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const getVal = id => { const el = $(id); return el ? el.value.trim() : ""; };
+  let currentMode = "fast";
+  let sseSource = null;
+  let logEntryCount = 0;
+
+  // ─── Navigation ───
+  function showPanel(name) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    $(`panel-${name}`).classList.add('active');
+    $(`nav-${name}`).classList.add('active');
+  }
+
+  // ─── Mode Switching ───
+  function setMode(mode) {
+    currentMode = mode;
+    document.querySelectorAll('.mode-card').forEach(c => { c.style.borderColor = 'var(--border)'; c.style.background = 'var(--surface-2)'; });
+    const active = mode === 'fast' ? 'modeCardFast' : mode === 'browser' ? 'modeCardBrowser' : 'modeCardPC';
+    $(active).style.borderColor = 'var(--accent)';
+    $(active).style.background = 'rgba(108,92,231,0.08)';
+    $('fastConfig').style.display = mode === 'fast' ? 'block' : 'none';
+    $('browserConfig').style.display = mode === 'browser' ? 'block' : 'none';
+    $('pokemonConfig').style.display = mode === 'pokemon' ? 'block' : 'none';
+  }
+
+  // ─── Status ───
+  function setStatus(type, msg) {
+    const banner = $('statusBanner');
+    banner.className = `status-banner visible ${type}`;
+    banner.innerHTML = type === 'running' ? `<div class="spinner"></div> ${msg}` : msg;
+    const dot = $('globalDot');
+    dot.className = `status-dot ${type}`;
+    $('globalStatus').textContent = type === 'running' ? 'Running' : type === 'success' ? 'Done' : type === 'error' ? 'Error' : 'Idle';
+  }
+
+  // ─── Logging ───
+  function appendLog(data) {
+    const panel = $('logPanel');
+    const div = document.createElement('div');
+    div.className = `log-entry ${data.type || 'info'}`;
+    const time = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '';
+    div.innerHTML = `<span class="time">${time}</span><span class="msg">${data.message || ''}</span>`;
+    panel.appendChild(div);
+    panel.scrollTop = panel.scrollHeight;
+    logEntryCount++;
+    $('logCount').textContent = `${logEntryCount} entries`;
+  }
+
+  // ─── SSE ───
+  function connectSSE() {
+    if (sseSource) return;
+    sseSource = new EventSource('/api/logs/stream');
+    $('liveDot').classList.add('on');
+    sseSource.onmessage = (e) => {
+      let data;
+      try { data = JSON.parse(e.data); } catch { return; }
+      if (data.type === 'connected') return;
+      if (data.type === 'complete') {
+        $('liveDot').classList.remove('on');
+        $('topRunBtn').disabled = false;
+        $('topStopBtn').disabled = true;
+        if (data.success) {
+          const msg = data.dryRun ? `DRY RUN complete in ${data.elapsed||'?'}s` : `ORDER PLACED in ${data.elapsed||'?'}s!`;
+          setStatus('success', msg);
+        } else if (data.stopped) {
+          setStatus('error', 'Stopped by user.');
+        } else {
+          setStatus('error', data.error || `Failed at: ${data.step||'unknown'}`);
+        }
+        if (data.screenshots?.length) {
+          const g = $('screenshotGallery');
+          g.innerHTML = '';
+          for (const s of data.screenshots) { const img = document.createElement('img'); img.src = s; img.onclick = () => window.open(s); g.appendChild(img); }
+        }
+        return;
+      }
+      if (data.type === 'stock-found') { setStatus('success', `STOCK FOUND: ${data.title||'Available!'}`); return; }
+      if (data.type === 'monitor-timeout') { setStatus('error', 'Monitor timed out.'); $('monitorStartBtn').disabled = false; $('monitorStopBtn').disabled = true; return; }
+      if (data.type === 'monitor-stopped') { $('monitorStartBtn').disabled = false; $('monitorStopBtn').disabled = true; return; }
+      appendLog(data);
+    };
+  }
+
+  // ─── Gather common config ───
+  function gatherCheckout() {
+    return { email: getVal('email'), firstName: getVal('firstName'), lastName: getVal('lastName'), address: getVal('address'), address2: getVal('address2'), city: getVal('city'), state: getVal('state'), zip: getVal('zip'), country: getVal('country'), phone: getVal('phone') };
+  }
+  function gatherPayment() {
+    return { cardNumber: getVal('cardNumber'), cardName: getVal('cardName'), expiryMonth: getVal('expiryMonth'), expiryYear: getVal('expiryYear'), cvv: getVal('cvv') };
+  }
+  function gatherProxies() { return $('proxyList').value.trim().split('\n').map(s=>s.trim()).filter(Boolean); }
+  function gatherSmtp() {
+    if (!$('useCustomSmtp').checked) return null;
+    return { host: getVal('smtpHost'), port: parseInt(getVal('smtpPort'))||587, user: getVal('smtpUser'), pass: getVal('smtpPass') };
+  }
+
+  // ─── RUN BOT ───
+  async function runBot() {
+    $('logPanel').innerHTML = '';
+    $('screenshotGallery').innerHTML = '';
+    logEntryCount = 0;
+    $('topRunBtn').disabled = true;
+    $('topStopBtn').disabled = false;
+    connectSSE();
+
+    const dryRun = $('dryRun').checked;
+    const cd = gatherCheckout();
+    const pd = gatherPayment();
+    const proxies = gatherProxies();
+    const smtp = gatherSmtp();
+
+    if (currentMode === 'fast') {
+      const storeUrl = getVal('fastStoreUrl'), productUrl = getVal('fastProductUrl');
+      const itemName = getVal('fastItemName'), variantId = getVal('fastVariantId');
+      if (!storeUrl && !productUrl) { alert('Enter a Store URL or Product URL.'); $('topRunBtn').disabled=false; $('topStopBtn').disabled=true; return; }
+      const taskCount = parseInt($('taskCount')?.value)||1;
+      setStatus('running', taskCount > 1 ? `Racing ${taskCount} tasks...` : 'Fast checkout...');
+      try {
+        await fetch('/api/run-fast', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ storeUrl, productUrl, itemName, variantId, checkoutDetails:cd, paymentDetails:pd, dryRun, confirmationEmail:getVal('confirmationEmail'), smtpConfig:smtp, proxyList:proxies, taskCount }) });
+      } catch(e) { setStatus('error', e.message); $('topRunBtn').disabled=false; $('topStopBtn').disabled=true; }
+    } else if (currentMode === 'browser') {
+      const url = getVal('url'), itemName = getVal('itemName');
+      if (!url || !itemName) { alert('Fill in URL and Item Name.'); $('topRunBtn').disabled=false; $('topStopBtn').disabled=true; return; }
+      setStatus('running', 'Browser checkout...');
+      const selectors = { addToCart:getVal('selAddToCart')||undefined, checkout:getVal('selCheckout')||undefined, guestCheckout:getVal('selGuest')||undefined, continue:getVal('selContinue')||undefined, submit:getVal('selSubmit')||undefined };
+      try {
+        await fetch('/api/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url, itemName, headless:$('headless').checked, clickItemFirst:$('clickItemFirst').checked, fullCheckout:$('fullCheckout').checked, checkoutDetails:cd, paymentDetails:pd, dryRun, confirmationEmail:getVal('confirmationEmail'), smtpConfig:smtp, selectors, proxyList:proxies, proxyStrategy:$('proxyStrategy').value, captchaProvider:'', captchaApiKey:'', captchaApiKey2c:getVal('captchaApiKey2c'), captchaApiKeyAc:getVal('captchaApiKeyAc'), captchaApiKeyCs:getVal('captchaApiKeyCs') }) });
+      } catch(e) { setStatus('error', e.message); $('topRunBtn').disabled=false; $('topStopBtn').disabled=true; }
+    } else if (currentMode === 'pokemon') {
+      setStatus('running', 'Pokemon Center checkout...');
+      try {
+        await fetch('/api/run-pokemon-center', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productUrl:getVal('pcProductUrl'), itemName:getVal('pcItemName'), checkoutDetails:cd, paymentDetails:pd, dryRun, email:getVal('pcEmail'), password:getVal('pcPassword') }) });
+      } catch(e) { setStatus('error', e.message); $('topRunBtn').disabled=false; $('topStopBtn').disabled=true; }
+    }
+  }
+
+  async function stopBot() {
+    try { await fetch('/api/stop', { method:'POST' }); } catch(_){}
+    $('topRunBtn').disabled = false; $('topStopBtn').disabled = true;
+    $('liveDot').classList.remove('on');
+    setStatus('error', 'Stopped.');
+  }
+
+  // ─── Pre-Warm ───
+  async function preWarmSessions() {
+    const storeUrl = getVal('fastStoreUrl'), productUrl = getVal('fastProductUrl');
+    if (!storeUrl && !productUrl) { alert('Enter a Store URL first.'); return; }
+    const taskCount = parseInt($('taskCount')?.value)||1;
+    $('logPanel').innerHTML = ''; logEntryCount = 0;
+    connectSSE();
+    setStatus('running', `Pre-warming ${taskCount} session(s)...`);
+    try {
+      const res = await fetch('/api/pre-warm', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ storeUrl, productUrl, taskCount, proxyList:gatherProxies(), paymentDetails:gatherPayment() }) });
+      const data = await res.json();
+      if (data.preWarmed) setStatus('success', `${data.warmed}/${data.total} sessions warmed. Ready!`);
+      else setStatus('error', data.error || 'Pre-warm failed.');
+    } catch(e) { setStatus('error', e.message); }
+  }
+
+  // ─── Monitor ───
+  async function startMonitor() {
+    const productUrl = getVal('monitorProductUrl');
+    if (!productUrl) { alert('Enter a product URL to monitor.'); return; }
+    $('logPanel').innerHTML = ''; logEntryCount = 0;
+    $('monitorStartBtn').disabled = true; $('monitorStopBtn').disabled = false;
+    connectSSE();
+    const pollIntervalMs = parseInt($('monitorInterval').value)||2000;
+    const maxDurationMs = (parseInt($('monitorDuration').value)||30)*60000;
+    setStatus('running', `Monitoring every ${pollIntervalMs}ms...`);
+    const checkoutConfig = {
+      mode: currentMode === 'fast' ? 'fast' : 'browser',
+      storeUrl: getVal('fastStoreUrl'), url: getVal('url'),
+      checkoutDetails: gatherCheckout(), paymentDetails: gatherPayment(),
+      dryRun: $('dryRun').checked, confirmationEmail: getVal('confirmationEmail'),
+      smtpConfig: gatherSmtp(), proxyList: gatherProxies(),
+      selectors: { addToCart:getVal('selAddToCart')||undefined, checkout:getVal('selCheckout')||undefined, guestCheckout:getVal('selGuest')||undefined, continue:getVal('selContinue')||undefined, submit:getVal('selSubmit')||undefined },
+      captchaApiKey2c:getVal('captchaApiKey2c'), captchaApiKeyAc:getVal('captchaApiKeyAc'), captchaApiKeyCs:getVal('captchaApiKeyCs'),
+      taskCount: parseInt($('taskCount')?.value)||1,
+    };
+    try {
+      await fetch('/api/monitor/start', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productUrl, storeUrl:getVal('fastStoreUrl'), itemName:getVal('fastItemName')||getVal('itemName'), variantId:getVal('fastVariantId'), pollIntervalMs, maxDurationMs, autoCheckout:true, checkoutConfig, discordWebhookUrl:getVal('discordWebhookUrl') }) });
+    } catch(e) { setStatus('error', e.message); $('monitorStartBtn').disabled=false; $('monitorStopBtn').disabled=true; }
+  }
+  async function stopMonitor() {
+    try { await fetch('/api/monitor/stop', { method:'POST' }); } catch(_){}
+    $('monitorStartBtn').disabled = false; $('monitorStopBtn').disabled = true;
+    setStatus('error', 'Monitor stopped.');
+  }
+
+  // ─── Harvester ───
+  async function startHarvester() {
+    const siteUrl = getVal('harvesterSiteUrl');
+    if (!siteUrl) { alert('Enter the CAPTCHA page URL.'); return; }
+    connectSSE();
+    $('harvesterStatus').textContent = 'Starting...';
+    try {
+      const res = await fetch('/api/harvester/start', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ siteUrl, sitekey:getVal('harvesterSitekey'), type:$('harvesterType').value, windows:parseInt($('harvesterWindows').value)||3, apiKey2c:getVal('captchaApiKey2c'), apiKeyAc:getVal('captchaApiKeyAc'), apiKeyCs:getVal('captchaApiKeyCs') }) });
+      const data = await res.json();
+      if (data.started) {
+        $('harvesterStatus').textContent = `Running (${data.windows} windows)`;
+        $('captchaViewerCard').style.display = 'block';
+        startHarvesterViewer();
+      }
+    } catch(e) { $('harvesterStatus').textContent = `Error: ${e.message}`; }
+  }
+  async function stopHarvester() {
+    try { await fetch('/api/harvester/stop',{method:'POST'}); } catch(_){}
+    if (window._hp) clearInterval(window._hp);
+    if (window._hss) clearInterval(window._hss);
+    $('harvesterStatus').textContent = 'Stopped.';
+    $('captchaViewerCard').style.display = 'none';
+    $('harvScreenshots').innerHTML = '';
+    $('harvWindowStats').innerHTML = '';
+    $('harvTokenBar').innerHTML = '';
+  }
+
+  function startHarvesterViewer() {
+    // Poll status every 3s
+    if (window._hp) clearInterval(window._hp);
+    if (window._hss) clearInterval(window._hss);
+
+    async function refreshStatus() {
+      try {
+        const r = await (await fetch('/api/harvester/status')).json();
+        if (!r.running) {
+          $('harvesterStatus').textContent = 'Stopped.';
+          $('captchaViewerCard').style.display = 'none';
+          clearInterval(window._hp);
+          clearInterval(window._hss);
+          return;
+        }
+        $('harvesterStatus').textContent = `${r.tokens}/${r.maxTokens} tokens ready | ${r.totalSolved} solved | ${r.windows} windows`;
+
+        // Window status badges
+        let statsHtml = '';
+        for (const ws of (r.windowStatus || [])) {
+          const color = ws.state === 'solved' ? 'var(--success)' : ws.state === 'error' ? 'var(--error)' : 'var(--text-dim)';
+          const label = ws.state === 'solved' ? `W${ws.window}: ${ws.solveCount} solved` : `W${ws.window}: ${ws.state}`;
+          statsHtml += `<span style="padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:600;background:${color}20;color:${color};border:1px solid ${color}40">${label}</span>`;
+        }
+        $('harvWindowStats').innerHTML = statsHtml;
+
+        // Token age bar (visual representation of banked tokens)
+        let barHtml = '';
+        for (const age of (r.tokenAges || [])) {
+          const pct = Math.min(age / 100, 1);
+          const hue = 120 - Math.round(pct * 120); // green→red as token ages
+          barHtml += `<div style="width:16px;height:20px;border-radius:3px;background:hsl(${hue},70%,45%);position:relative" title="Token age: ${age}s"><span style="position:absolute;bottom:-14px;left:0;font-size:0.55rem;color:var(--text-dim)">${age}s</span></div>`;
+        }
+        if (r.tokens === 0) barHtml = '<span style="font-size:0.72rem;color:var(--text-dim)">No tokens banked yet...</span>';
+        $('harvTokenBar').innerHTML = barHtml;
+      } catch(_){}
+    }
+
+    async function refreshScreenshots() {
+      try {
+        const r = await (await fetch('/api/harvester/screenshots')).json();
+        if (!r.running || !r.screenshots?.length) return;
+        let html = '';
+        for (const ss of r.screenshots) {
+          const border = ss.status?.state === 'solved' ? 'var(--success)' : 'var(--border)';
+          const stateLabel = ss.status?.state === 'solved' ? `Solved: ${ss.status.solveCount}` : ss.status?.state || '?';
+          html += `<div style="border:2px solid ${border};border-radius:8px;overflow:hidden;background:var(--surface-2)">`;
+          if (ss.image) {
+            html += `<img src="${ss.image}" style="width:100%;display:block" />`;
+          } else {
+            html += `<div style="height:100px;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:0.75rem">No preview</div>`;
+          }
+          html += `<div style="padding:4px 8px;font-size:0.68rem;font-weight:600;display:flex;justify-content:space-between"><span>Window ${ss.window}</span><span style="color:${border}">${stateLabel}</span></div></div>`;
+        }
+        $('harvScreenshots').innerHTML = html;
+      } catch(_){}
+    }
+
+    refreshStatus();
+    refreshScreenshots();
+    window._hp = setInterval(refreshStatus, 3000);
+    window._hss = setInterval(refreshScreenshots, 3000);
+  }
+
+  // ─── Self Test ───
+  async function runSelfTest() {
+    showPanel('test');
+    $('testResults').innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem">Running tests...</div>';
+    $('logPanel').innerHTML = ''; logEntryCount = 0;
+    connectSSE();
+    setStatus('running', 'Running diagnostics...');
+    try {
+      const res = await fetch('/api/self-test', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ storeUrl:getVal('fastStoreUrl')||getVal('url'), proxyList:gatherProxies(), paymentDetails:gatherPayment() }) });
+      const data = await res.json();
+      let html = '';
+      for (const r of data.results) {
+        const icon = r.status==='pass'?'&#10004;':r.status==='fail'?'&#10008;':'&#9888;';
+        html += `<div class="test-result ${r.status}"><span class="test-icon">${icon}</span><span class="test-name">${r.name}</span><span class="test-detail">${r.detail}</span><span class="test-ms">${r.ms}ms</span></div>`;
+      }
+      html += `<div style="margin-top:12px;font-size:0.85rem;font-weight:700;color:${data.allPassed?'var(--success)':'var(--error)'};">${data.passed}/${data.total} passed${data.failed?' — '+data.failed+' FAILED':''} (${data.totalMs}ms)</div>`;
+      $('testResults').innerHTML = html;
+      setStatus(data.allPassed?'success':'error', `Diagnostics: ${data.passed}/${data.total} passed`);
+    } catch(e) { $('testResults').innerHTML = `<div style="color:var(--error)">${e.message}</div>`; setStatus('error', e.message); }
+  }
+
+  // ─── Profiles ───
+  async function refreshProfiles() {
+    try {
+      const res = await fetch('/api/profiles');
+      const profiles = await res.json();
+      const sel = $('profileSelect');
+      sel.innerHTML = '<option value="">-- Select --</option>';
+      for (const p of profiles) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name||p.id; sel.appendChild(o); }
+    } catch(_){}
+  }
+  async function saveProfile() {
+    const name = getVal('profileName') || 'Profile ' + Date.now().toString(36);
+    try {
+      await fetch('/api/profiles', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, checkoutDetails:gatherCheckout(), paymentDetails:gatherPayment() }) });
+      await refreshProfiles();
+      appendLog({ type:'success', message:`Profile "${name}" saved.`, timestamp:new Date().toISOString() });
+    } catch(_){}
+  }
+  async function loadProfile() {
+    const id = $('profileSelect').value;
+    if (!id) return;
+    try {
+      const profiles = await (await fetch('/api/profiles')).json();
+      const p = profiles.find(x=>x.id===id);
+      if (!p) return;
+      if (p.checkoutDetails) { for (const [k,v] of Object.entries(p.checkoutDetails)) { const el=$(k); if(el)el.value=v||''; } }
+      if (p.paymentDetails) { for (const [k,v] of Object.entries(p.paymentDetails)) { const el=$(k); if(el)el.value=v||''; } }
+      appendLog({ type:'success', message:`Loaded profile "${p.name}".`, timestamp:new Date().toISOString() });
+    } catch(_){}
+  }
+  async function deleteProfile() {
+    const id = $('profileSelect').value;
+    if (!id || !confirm('Delete this profile?')) return;
+    try { await fetch(`/api/profiles/${id}`,{method:'DELETE'}); await refreshProfiles(); } catch(_){}
+  }
+
+  // ─── Session Keeper (always-on) ───
+  async function startSessionKeeper() {
+    const storeUrl = getVal('fastStoreUrl');
+    if (!storeUrl) { alert('Enter a Store URL in Target & Mode first.'); return; }
+    const refreshIntervalMin = parseInt($('keeperInterval').value) || 90;
+    const taskCount = parseInt($('keeperTasks').value) || 5;
+    connectSSE();
+    $('keeperStartBtn').disabled = true; $('keeperStopBtn').disabled = false;
+    $('keeperStatus').textContent = 'Starting...';
+    setStatus('running', `Session Keeper: warming ${taskCount} sessions...`);
+    try {
+      const res = await fetch('/api/session-keeper/start', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ storeUrl, productUrl:getVal('fastProductUrl'), taskCount, proxyList:gatherProxies(), paymentDetails:gatherPayment(), refreshIntervalMin }) });
+      const data = await res.json();
+      if (data.started) {
+        $('keeperStatus').textContent = `Running: ${taskCount} sessions, refreshing every ${refreshIntervalMin}min`;
+        setStatus('success', `Session Keeper active. ${taskCount} sessions always warm.`);
+        // Poll status
+        if (window._keeperPoll) clearInterval(window._keeperPoll);
+        window._keeperPoll = setInterval(async () => {
+          try {
+            const r = await (await fetch('/api/session-keeper/status')).json();
+            if (r.running) {
+              const mins = Math.floor(r.nextRefreshInSec / 60);
+              const secs = r.nextRefreshInSec % 60;
+              $('keeperStatus').textContent = `Active: ${r.activeSessions} sessions | Next refresh in ${mins}m ${secs}s`;
+            } else {
+              $('keeperStatus').textContent = 'Stopped.';
+              $('keeperStartBtn').disabled = false; $('keeperStopBtn').disabled = true;
+              clearInterval(window._keeperPoll);
+            }
+          } catch(_){}
+        }, 10000);
+      } else {
+        $('keeperStatus').textContent = data.error || 'Failed to start.';
+        $('keeperStartBtn').disabled = false; $('keeperStopBtn').disabled = true;
+      }
+    } catch(e) { $('keeperStatus').textContent = `Error: ${e.message}`; $('keeperStartBtn').disabled = false; $('keeperStopBtn').disabled = true; }
+  }
+  async function stopSessionKeeper() {
+    try { await fetch('/api/session-keeper/stop', { method:'POST' }); } catch(_){}
+    if (window._keeperPoll) clearInterval(window._keeperPoll);
+    $('keeperStartBtn').disabled = false; $('keeperStopBtn').disabled = true;
+    $('keeperStatus').textContent = 'Stopped.';
+    setStatus('error', 'Session Keeper stopped.');
+  }
+
+  // ─── Session Persistence ───
+  async function saveSessions() {
+    try {
+      const res = await fetch('/api/save-sessions', { method:'POST' });
+      const data = await res.json();
+      if (data.saved) { $('sessionStatus').textContent = `${data.saved} session(s) saved to disk.`; appendLog({type:'success',message:`${data.saved} sessions saved (AES-256 encrypted).`,timestamp:new Date().toISOString()}); }
+      else { $('sessionStatus').textContent = data.error || 'Save failed.'; }
+    } catch(e) { $('sessionStatus').textContent = `Error: ${e.message}`; }
+  }
+  async function loadSessions() {
+    try {
+      const res = await fetch('/api/load-sessions', { method:'POST' });
+      const data = await res.json();
+      if (data.loaded) { $('sessionStatus').textContent = `${data.loaded}/${data.total} session(s) restored.`; appendLog({type:'success',message:`${data.loaded} sessions restored from disk.`,timestamp:new Date().toISOString()}); }
+      else { $('sessionStatus').textContent = data.error || 'No sessions found.'; }
+    } catch(e) { $('sessionStatus').textContent = `Error: ${e.message}`; }
+  }
+
+  // ─── Variant Pre-Poller ───
+  async function startVariantPoll() {
+    const storeUrl = getVal('fastStoreUrl');
+    if (!storeUrl) { alert('Enter a Store URL first.'); return; }
+    connectSSE();
+    $('variantPollStatus').textContent = 'Polling for new variants...';
+    setStatus('running', 'Polling products.json for new variants...');
+    try {
+      await fetch('/api/poll-variant', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ storeUrl, itemName:getVal('fastItemName'), pollIntervalMs:1500, maxDurationMs:300000 }) });
+    } catch(e) { $('variantPollStatus').textContent = `Error: ${e.message}`; }
+  }
+
+  // Handle variant-found event from SSE
+  const origOnMessage = sseSource?.onmessage;
+  function patchSSE() {
+    if (!sseSource) return;
+    const orig = sseSource.onmessage;
+    sseSource.addEventListener('message', (e) => {
+      let data; try { data = JSON.parse(e.data); } catch { return; }
+      if (data.type === 'variant-found') {
+        $('variantPollStatus').textContent = `FOUND: ${data.title||'New variant'} (${data.variantId})`;
+        $('fastVariantId').value = data.variantId;
+        setStatus('success', `New variant detected: ${data.title||data.variantId}`);
+      }
+      if (data.type === 'variant-timeout') {
+        $('variantPollStatus').textContent = 'Poll timed out. No new variants found.';
+        setStatus('error', 'Variant poll timed out.');
+      }
+    });
+  }
+
+  // ─── Init ───
+  $('useCustomSmtp').addEventListener('change', function() { $('smtpFields').style.display = this.checked ? 'block' : 'none'; });
+  refreshProfiles();
+</script>
+</body>
+</html>

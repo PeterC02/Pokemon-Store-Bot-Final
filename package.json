@@ -1,0 +1,20 @@
+{
+  "name": "item-cart-bot",
+  "version": "1.0.0",
+  "description": "Automated browser bot that finds a pre-configured item on a webpage and adds it to cart",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "cycletls": "^1.0.27",
+    "express": "^4.18.2",
+    "https-proxy-agent": "^7.0.4",
+    "node-fetch": "^2.7.0",
+    "nodemailer": "^6.9.8",
+    "puppeteer": "^21.6.1",
+    "tesseract.js": "^5.1.0",
+    "undici": "^7.22.0"
+  }
+}
