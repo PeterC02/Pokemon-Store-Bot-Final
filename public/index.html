@@ -1242,7 +1242,7 @@
         fleetAutoProxy = true;
         el.style.background = 'rgba(0,184,148,0.08)';
         el.style.borderColor = 'rgba(0,184,148,0.3)';
-        el.innerHTML = `<span style="font-size:1.1rem">&#10004;</span><div><strong style="color:var(--success)">Auto-Proxy Active — ${data.provider}</strong><br><span style="font-size:0.72rem;color:var(--text-muted)">${data.region} &middot; Sticky sessions &middot; 1 unique IP per bot &middot; Auto-generated on launch</span></div>`;
+        el.innerHTML = `<span style="font-size:1.1rem">&#10004;</span><div><strong style="color:var(--success)">Auto-Proxy Active — ${data.provider}</strong><br><span style="font-size:0.72rem;color:var(--text-muted)">${data.region} (${data.countryCode}) &middot; Sticky sessions &middot; 1 unique IP per bot &middot; Geo-validated on launch</span><br><span style="font-size:0.68rem;color:var(--warning)">All users must ship to ${data.region} to avoid geo-mismatch fraud flags</span></div>`;
         $('fleetProxyManual').style.display = 'none';
       } else {
         fleetAutoProxy = false;

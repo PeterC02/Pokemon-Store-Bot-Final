@@ -41,6 +41,26 @@ function hasProxyConfig() {
   return !!(process.env.IPROYAL_HOST && process.env.IPROYAL_PORT && process.env.IPROYAL_USER && process.env.IPROYAL_PASS);
 }
 
+// Extract proxy country code from IPRoyal password template (e.g. country-gb → GB)
+function getProxyCountry() {
+  const pass = process.env.IPROYAL_PASS || '';
+  const match = pass.match(/country-([a-z]{2})/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+// Country name → ISO code for geo-match validation
+const GEO_MAP = {
+  'united kingdom': 'GB', 'uk': 'GB', 'great britain': 'GB', 'england': 'GB', 'gb': 'GB',
+  'united states': 'US', 'usa': 'US', 'us': 'US', 'america': 'US',
+  'canada': 'CA', 'australia': 'AU', 'ireland': 'IE', 'germany': 'DE',
+  'france': 'FR', 'japan': 'JP', 'netherlands': 'NL', 'new zealand': 'NZ',
+};
+function normalizeGeoCountry(c) {
+  if (!c) return null;
+  const lower = c.trim().toLowerCase();
+  return GEO_MAP[lower] || (c.length === 2 ? c.toUpperCase() : null);
+}
+
 const app = express();
 const PORT = 3000;
 
@@ -876,6 +896,24 @@ app.post("/api/fleet/launch", async (req, res) => {
     broadcastLog({ timestamp: new Date().toISOString(), type: "success", message: `[FLEET] Auto-generated ${proxies.length} unique proxy sessions from IPRoyal config.` });
   }
 
+  // Geo-mismatch validation: proxy IP country vs user shipping country
+  const proxyCountry = getProxyCountry();
+  if (proxyCountry) {
+    let mismatchCount = 0;
+    for (const u of users) {
+      const userCountry = normalizeGeoCountry(u.shipping?.country);
+      if (userCountry && userCountry !== proxyCountry) {
+        mismatchCount++;
+        broadcastLog({ timestamp: new Date().toISOString(), type: "error", message: `[FLEET] GEO MISMATCH: User "${u.name}" ships to ${userCountry} but proxy IP is ${proxyCountry}. Shopify may flag this order.` });
+      }
+    }
+    if (mismatchCount > 0) {
+      broadcastLog({ timestamp: new Date().toISOString(), type: "error", message: `[FLEET] WARNING: ${mismatchCount}/${users.length} users have shipping country ≠ proxy country (${proxyCountry}). Risk of fraud flags. Change proxy region in IPRoyal or update user addresses.` });
+    } else {
+      broadcastLog({ timestamp: new Date().toISOString(), type: "success", message: `[FLEET] Geo-match OK: all ${users.length} users ship to ${proxyCountry}, proxy IPs are ${proxyCountry}.` });
+    }
+  }
+
   res.json({ started: true, runId: activeFleet.runId, botCount: users.length, proxiesAssigned: proxies.length });
 
   try {
@@ -909,11 +947,14 @@ app.get("/api/fleet/status", (req, res) => {
 });
 
 app.get("/api/proxy/status", (req, res) => {
+  const pc = getProxyCountry();
+  const regionNames = { GB: 'United Kingdom', US: 'United States', CA: 'Canada', AU: 'Australia', DE: 'Germany', FR: 'France', IE: 'Ireland', NL: 'Netherlands', JP: 'Japan', NZ: 'New Zealand' };
   res.json({
     configured: hasProxyConfig(),
     provider: hasProxyConfig() ? "IPRoyal" : null,
     host: process.env.IPROYAL_HOST || null,
-    region: (process.env.IPROYAL_PASS || "").includes("country-gb") ? "United Kingdom" : (process.env.IPROYAL_PASS || "").includes("country-us") ? "United States" : "Auto",
+    region: regionNames[pc] || pc || "Auto",
+    countryCode: pc || null,
     mode: "sticky",
   });
 });
