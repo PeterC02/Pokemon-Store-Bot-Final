@@ -296,16 +296,48 @@
         </div>
       </div>
 
-      <!-- Live Bot Status Grid -->
-      <div class="card" id="fleetStatusCard" style="display:none">
-        <div class="card-title" style="justify-content:space-between">
-          <span>Live Bot Status <span class="badge badge-fast" id="fleetRunningBadge">RUNNING</span></span>
-          <span style="font-size:0.72rem;color:var(--text-dim)" id="fleetElapsed">0.0s</span>
+      <!-- ═══ MONITORING CONSOLE ═══ -->
+      <div class="card" id="fleetStatusCard" style="display:none;border-color:var(--accent)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:1rem;font-weight:700">Monitoring Console</span>
+            <span class="badge badge-fast" id="fleetRunningBadge">RUNNING</span>
+          </div>
+          <span style="font-size:0.82rem;font-weight:600;font-family:monospace;color:var(--text-muted)" id="fleetElapsed">0.0s</span>
         </div>
-        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap" id="fleetSummaryBar">
-          <span style="font-size:0.78rem;font-weight:600;color:var(--text-muted)">Waiting...</span>
+
+        <!-- Overall progress -->
+        <div style="margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;font-size:0.72rem;font-weight:600;margin-bottom:5px">
+            <span style="color:var(--text-muted)" id="fleetOverallLabel">0 / 0 bots complete</span>
+            <div style="display:flex;gap:10px">
+              <span style="color:var(--success)" id="fleetCountSuccess">0 success</span>
+              <span style="color:var(--error)" id="fleetCountFailed">0 failed</span>
+              <span style="color:var(--accent)" id="fleetCountActive">0 active</span>
+            </div>
+          </div>
+          <div style="width:100%;height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden;display:flex">
+            <div id="fleetBarSuccess" style="height:100%;background:var(--success);transition:width 0.3s;width:0"></div>
+            <div id="fleetBarFailed" style="height:100%;background:var(--error);transition:width 0.3s;width:0"></div>
+            <div id="fleetBarActive" style="height:100%;background:var(--accent);transition:width 0.3s;width:0"></div>
+          </div>
         </div>
-        <div id="fleetBotGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px"></div>
+
+        <!-- Bot table -->
+        <div style="max-height:420px;overflow-y:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:0.78rem" id="fleetMonitorTable">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1">
+                <th style="padding:8px 6px;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);width:28px">#</th>
+                <th style="padding:8px 6px;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim)">User</th>
+                <th style="padding:8px 6px;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);width:180px">Progress</th>
+                <th style="padding:8px 6px;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);width:90px">Step</th>
+                <th style="padding:8px 6px;text-align:right;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);width:50px">Time</th>
+              </tr>
+            </thead>
+            <tbody id="fleetMonitorBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -1186,7 +1218,14 @@
     $('fleetRunningBadge').textContent = 'RUNNING';
     $('fleetRunningBadge').className = 'badge badge-fast';
     fleetBotStatuses = {};
-    $('fleetBotGrid').innerHTML = '';
+    $('fleetMonitorBody').innerHTML = '';
+    $('fleetBarSuccess').style.width = '0';
+    $('fleetBarFailed').style.width = '0';
+    $('fleetBarActive').style.width = '0';
+    $('fleetOverallLabel').textContent = `0 / ${selected.length} bots complete`;
+    $('fleetCountSuccess').textContent = '0 success';
+    $('fleetCountFailed').textContent = '0 failed';
+    $('fleetCountActive').textContent = `${selected.length} active`;
     setStatus('running', `Fleet: launching ${selected.length} bot(s)...`);
 
     // Start elapsed timer
@@ -1226,63 +1265,71 @@
     setStatus('error', 'Fleet stopped.');
   }
 
-  // ─── Fleet Bot Status Rendering ───
-  const STATE_COLORS = {
-    queued: { bg: 'var(--surface-2)', border: 'var(--border)', text: 'var(--text-dim)', icon: '&#9203;' },
-    starting: { bg: 'rgba(52,152,219,0.08)', border: 'rgba(52,152,219,0.3)', text: 'var(--info)', icon: '&#9889;' },
-    resolving: { bg: 'rgba(52,152,219,0.08)', border: 'rgba(52,152,219,0.3)', text: 'var(--info)', icon: '&#128269;' },
-    adding: { bg: 'rgba(108,92,231,0.08)', border: 'rgba(108,92,231,0.3)', text: 'var(--accent)', icon: '&#128722;' },
-    checkout: { bg: 'rgba(108,92,231,0.08)', border: 'rgba(108,92,231,0.3)', text: 'var(--accent)', icon: '&#128179;' },
-    shipping: { bg: 'rgba(243,156,18,0.08)', border: 'rgba(243,156,18,0.3)', text: 'var(--warning)', icon: '&#128230;' },
-    rate: { bg: 'rgba(243,156,18,0.08)', border: 'rgba(243,156,18,0.3)', text: 'var(--warning)', icon: '&#128666;' },
-    payment: { bg: 'rgba(231,76,60,0.08)', border: 'rgba(231,76,60,0.3)', text: 'var(--error)', icon: '&#128179;' },
-    processing: { bg: 'rgba(231,76,60,0.08)', border: 'rgba(231,76,60,0.3)', text: 'var(--error)', icon: '&#8987;' },
-    success: { bg: 'rgba(0,184,148,0.1)', border: 'rgba(0,184,148,0.4)', text: 'var(--success)', icon: '&#10004;' },
-    failed: { bg: 'rgba(231,76,60,0.08)', border: 'rgba(231,76,60,0.3)', text: 'var(--error)', icon: '&#10008;' },
-    stopped: { bg: 'var(--surface-2)', border: 'var(--border)', text: 'var(--text-dim)', icon: '&#9632;' },
-  };
+  // ─── Fleet Monitoring Console ───
+  // Steps in order for progress calculation
+  const STEP_ORDER = ['queued','starting','resolving','adding','checkout','shipping','rate','payment','processing','success'];
+  const STEP_PERCENT = { queued:0, starting:5, resolving:15, adding:30, checkout:45, shipping:55, rate:65, payment:80, processing:90, success:100, failed:100, stopped:100 };
+  const STEP_LABEL = { queued:'Queued', starting:'Starting', resolving:'Finding item', adding:'Add to cart', checkout:'Checkout', shipping:'Shipping', rate:'Ship rate', payment:'Payment', processing:'Processing', success:'Done', failed:'Failed', stopped:'Stopped' };
+  const STEP_COLOR = { queued:'var(--text-dim)', starting:'var(--accent)', resolving:'#3498db', adding:'var(--accent)', checkout:'var(--accent)', shipping:'var(--warning)', rate:'var(--warning)', payment:'var(--error)', processing:'var(--error)', success:'var(--success)', failed:'var(--error)', stopped:'var(--text-dim)' };
 
   function fleetUpdateBotCard(status) {
     fleetBotStatuses[status.botId] = status;
-    const grid = $('fleetBotGrid');
-    let card = document.getElementById('fbot-' + status.botId);
-    const sc = STATE_COLORS[status.state] || STATE_COLORS.queued;
+    const tbody = $('fleetMonitorBody');
+    let row = document.getElementById('frow-' + status.botId);
+    const pct = STEP_PERCENT[status.state] || 0;
+    const label = STEP_LABEL[status.state] || status.state;
+    const color = STEP_COLOR[status.state] || 'var(--text-dim)';
+    const num = status.botId.replace('bot-','');
+    const isDone = status.state === 'success' || status.state === 'failed' || status.state === 'stopped';
+    const barBg = status.state === 'success' ? 'var(--success)' : status.state === 'failed' ? 'var(--error)' : 'var(--accent)';
 
-    if (!card) {
-      card = document.createElement('div');
-      card.id = 'fbot-' + status.botId;
-      grid.appendChild(card);
+    if (!row) {
+      row = document.createElement('tr');
+      row.id = 'frow-' + status.botId;
+      tbody.appendChild(row);
     }
 
-    const stateLabel = status.state.charAt(0).toUpperCase() + status.state.slice(1);
-    card.style.cssText = `padding:12px;border-radius:10px;border:2px solid ${sc.border};background:${sc.bg};transition:all 0.2s`;
-    card.innerHTML = `
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-        <span style="font-size:1.1rem">${sc.icon}</span>
-        <span style="font-weight:700;font-size:0.82rem;color:${sc.text};flex:1">${status.userName}</span>
-        <span style="font-size:0.68rem;color:var(--text-dim)">${status.elapsed}s</span>
-      </div>
-      <div style="font-size:0.72rem;font-weight:600;color:${sc.text};margin-bottom:2px">${stateLabel}</div>
-      <div style="font-size:0.65rem;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px" title="${status.detail || ''}">${status.detail || ''}</div>
+    row.style.cssText = `border-bottom:1px solid var(--border);transition:background 0.2s;${status.state==='success'?'background:rgba(0,184,148,0.04)':status.state==='failed'?'background:rgba(231,76,60,0.04)':''}`;
+    row.innerHTML = `
+      <td style="padding:7px 6px;font-weight:700;color:var(--text-dim);font-size:0.72rem">${num}</td>
+      <td style="padding:7px 6px">
+        <div style="font-weight:600;font-size:0.8rem;line-height:1.2">${status.userName}</div>
+      </td>
+      <td style="padding:7px 6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:${barBg};border-radius:4px;transition:width 0.4s ease"></div>
+          </div>
+          <span style="font-size:0.68rem;font-weight:600;color:var(--text-dim);min-width:28px;text-align:right">${pct}%</span>
+        </div>
+      </td>
+      <td style="padding:7px 6px">
+        <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:0.7rem;font-weight:600;color:${color};background:${color}15">${isDone?(status.state==='success'?'&#10004;':status.state==='failed'?'&#10008;':'&#9632;'):'<span class="spinner" style="width:10px;height:10px;border-width:1.5px"></span>'} ${label}</span>
+      </td>
+      <td style="padding:7px 6px;text-align:right;font-family:monospace;font-size:0.72rem;color:var(--text-dim)">${status.elapsed}s</td>
     `;
 
-    // Update summary bar
-    fleetUpdateSummary();
+    fleetUpdateOverall();
   }
 
-  function fleetUpdateSummary() {
-    const counts = {};
-    for (const s of Object.values(fleetBotStatuses)) {
-      counts[s.state] = (counts[s.state] || 0) + 1;
+  function fleetUpdateOverall() {
+    const all = Object.values(fleetBotStatuses);
+    const total = all.length;
+    if (total === 0) return;
+    let sCount = 0, fCount = 0, aCount = 0;
+    for (const s of all) {
+      if (s.state === 'success') sCount++;
+      else if (s.state === 'failed' || s.state === 'stopped') fCount++;
+      else aCount++;
     }
-    const total = Object.values(fleetBotStatuses).length;
-    let html = '';
-    for (const [state, count] of Object.entries(counts)) {
-      const sc = STATE_COLORS[state] || STATE_COLORS.queued;
-      html += `<span style="padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:600;background:${sc.bg};color:${sc.text};border:1px solid ${sc.border}">${state}: ${count}</span>`;
-    }
-    html += `<span style="font-size:0.7rem;color:var(--text-dim);margin-left:auto">${total} bot(s)</span>`;
-    $('fleetSummaryBar').innerHTML = html;
+    const done = sCount + fCount;
+    $('fleetOverallLabel').textContent = `${done} / ${total} bots complete`;
+    $('fleetCountSuccess').textContent = `${sCount} success`;
+    $('fleetCountFailed').textContent = `${fCount} failed`;
+    $('fleetCountActive').textContent = `${aCount} active`;
+    $('fleetBarSuccess').style.width = `${(sCount/total)*100}%`;
+    $('fleetBarFailed').style.width = `${(fCount/total)*100}%`;
+    $('fleetBarActive').style.width = `${(aCount/total)*100}%`;
   }
 
   function fleetHandleComplete(data) {
