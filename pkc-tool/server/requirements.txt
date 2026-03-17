@@ -1,0 +1,10 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+httpx[http2]==0.28.1
+aiosqlite==0.20.0
+bcrypt==4.2.1
+PyJWT==2.10.1
+pydantic==2.10.4
+discord.py==2.4.0
+stripe==8.0.0
+python-dotenv==1.2.1

@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: pokemon-store-bot
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    plan: starter
-    envVars:
-      - key: PORT
-        value: 3000
